@@ -84,8 +84,8 @@ void* calloc(size_t n, size_t size);
 void* __libc_malloc(size_t size);
 void* malloc(size_t size);
 
-void* __libc_memalign(size_t alignment, size_t size);
-void* memalign(size_t alignment, size_t size);
+void* __libc_memalign(size_t boundary, size_t size);
+void* memalign(size_t boundary, size_t size);
 
 void* __libc_realloc(void* ptr, size_t size);
 void* realloc(void* ptr, size_t size);
@@ -143,10 +143,10 @@ void* malloc(size_t size)
   return ret;
 }
 
-void* memalign(size_t alignment, size_t size)
+void* memalign(size_t boundary, size_t size)
 {
   if( !chpl_mem_inited() ) {
-    void* ret = __libc_memalign(alignment, size);
+    void* ret = __libc_memalign(boundary, size);
     if( DEBUG_REPLACE_MALLOC ) 
       printf("in early memalign %p = system memalign(%#x)\n", ret, (int) size);
     track_system_allocated(ret, size, __libc_malloc);
@@ -155,7 +155,12 @@ void* memalign(size_t alignment, size_t size)
   if( DEBUG_REPLACE_MALLOC ) 
     printf("in memalign\n");
 
-  return chpl_memalign(alignment, size);
+  void* memptr;
+  if (posix_memalign(&memptr,
+                     (boundary < sizeof(void*)) ? sizeof(void*) : boundary,
+                     size) == 0)
+    return memptr;
+  return NULL;
 }
 
 void* realloc(void* ptr, size_t size)
@@ -225,9 +230,13 @@ int posix_memalign(void **memptr, size_t alignment, size_t size)
 {
   int ret;
   if( !chpl_mem_inited() ) {
-    *memptr = NULL;
-    ret = chpl_posix_memalign_check_valid(alignment);
-    if( ret ) return ret;
+    // return EINVAL if alignment not a power of 2 at least as large
+    // as sizeof(void*)
+    if( (alignment & (alignment - 1)) != 0
+        || alignment < sizeof(void*) ) {
+      return EINVAL;
+    }
+
     *memptr = __libc_memalign(alignment, size);
     if( ! *memptr ) return ENOMEM;
     if( DEBUG_REPLACE_MALLOC ) 

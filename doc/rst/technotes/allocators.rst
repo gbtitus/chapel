@@ -68,10 +68,13 @@ For example, here is a Chapel program that uses the Chapel allocator from C:
 
   myfree(x);
 
-The Chapel runtime includes ``chpl_calloc``, ``chpl_malloc``,
-``chpl_memalign``, ``chpl_realloc``, ``chpl_free``,
-``chpl_posix_memalign``, ``chpl_valloc``, and ``chpl_pvalloc``.  These
-routines take in exactly the same arguments as the C library versions.
+The Chapel memory interface provides ``chpl_calloc``, ``chpl_malloc``,
+``chpl_realloc``, ``chpl_posix_memalign``, and ``chpl_free``.  These
+routines have the same signatures as the corresponding C library
+functions defined by POSIX.  It also provides ``chpl_memalign``,
+``chpl_valloc``, and ``chpl_pvalloc``, with the same signatures as the
+corresponding non-POSIX functions, though use of ``chpl_posix_memalign``
+is encouraged in place of these.
 
 ------------------------------
 Replacing the System Allocator

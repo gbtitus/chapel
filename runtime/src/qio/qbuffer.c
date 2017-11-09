@@ -148,7 +148,8 @@ qioerr _qbytes_init_iobuf(qbytes_t* ret)
 {
   void* data = NULL;
   
-  data = qio_memalign(sys_page_size(), qbytes_iobuf_size);
+  if( qio_posix_memalign(&data, sys_page_size(), qbytes_iobuf_size) != 0 )
+    return QIO_ENOMEM;
   if( !data ) return QIO_ENOMEM;
   memset(data, 0, qbytes_iobuf_size);
 

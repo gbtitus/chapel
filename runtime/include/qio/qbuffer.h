@@ -457,7 +457,8 @@ qioerr qbuffer_memset(qbuffer_t* buf, qbuffer_iter_t start, qbuffer_iter_t end, 
 #define qio_malloc(size) chpl_mem_alloc(size, CHPL_RT_MD_IO_BUFFER, __LINE__, 0)
 #define qio_calloc(nmemb, size) chpl_mem_allocManyZero(nmemb, size, CHPL_RT_MD_IO_BUFFER, __LINE__, 0)
 #define qio_realloc(ptr, size) chpl_mem_realloc(ptr, size, CHPL_RT_MD_IO_BUFFER, __LINE__, 0)
-#define qio_memalign(boundary, size)  chpl_memalign(boundary, size)
+#define qio_posix_memalign(memptr, alignment, size) \
+        chpl_posix_memalign(memptr, alignment, size)
 #define qio_free(ptr) chpl_mem_free(ptr, __LINE__, 0)
 #define qio_memcpy(dest, src, num) chpl_memcpy(dest, src, num)
 
@@ -470,7 +471,8 @@ typedef chpl_bool qio_bool;
 #define qio_malloc(size) sys_malloc(size)
 #define qio_calloc(nmemb, size) sys_calloc(nmemb,size)
 #define qio_realloc(ptr, size) sys_realloc(ptr, size)
-#define qio_memalign(boundary, size) sys_memalign(boundary, size)
+#define qio_posix_memalign(memptr, alignment, size) \
+        sys_posix_memalign(memptr, alignment, size)
 #define qio_free(ptr) sys_free(ptr)
 #define qio_memcpy(dest, src, num) memcpy(dest, src, num)
 

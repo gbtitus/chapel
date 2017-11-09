@@ -60,13 +60,13 @@ static inline void* chpl_malloc(size_t size) {
   return CHPL_JE_MALLOC(size);
 }
 
-static inline void* chpl_memalign(size_t boundary, size_t size) {
-  void* ret = NULL;
-  int rc;
-  rc = CHPL_JE_POSIX_MEMALIGN(&ret, boundary, size);
-  if( rc == 0 ) return ret;
-  else return NULL;
+static inline int chpl_posix_memalign(void** memptr,
+                                      size_t alignment, size_t size) {
+  return CHPL_JE_POSIX_MEMALIGN(memptr, alignment, size);
 }
+
+// temporary because Qthreads needs this decl from this file
+void* chpl_memalign(size_t boundary, size_t size);
 
 static inline void* chpl_realloc(void* ptr, size_t size) {
   return CHPL_JE_REALLOC(ptr, size);

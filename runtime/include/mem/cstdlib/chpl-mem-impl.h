@@ -36,9 +36,13 @@ static inline void* chpl_malloc(size_t size) {
   return sys_malloc(size);
 }
 
-static inline void* chpl_memalign(size_t boundary, size_t size) {
-  return sys_memalign(boundary, size);
+static inline int chpl_posix_memalign(void** memptr,
+                                      size_t alignment, size_t size) {
+  return sys_posix_memalign(memptr, alignment, size);
 }
+
+// temporary because Qthreads needs this decl from this file
+void* chpl_memalign(size_t boundary, size_t size);
 
 static inline void* chpl_realloc(void* ptr, size_t size) {
   return sys_realloc(ptr,size);

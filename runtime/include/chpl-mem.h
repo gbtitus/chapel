@@ -42,16 +42,14 @@
 // start public interface
 static inline void* chpl_calloc(size_t n, size_t size);
 static inline void* chpl_malloc(size_t size);
-static inline void* chpl_memalign(size_t boundary, size_t size);
 static inline void* chpl_realloc(void* ptr, size_t size);
+static inline int chpl_posix_memalign(void** ptr,
+                                      size_t alignment, size_t size);
 static inline void chpl_free(void* ptr);
-int chpl_posix_memalign(void** ptr, size_t alignment, size_t size);
+void* chpl_memalign(size_t boundary, size_t size);
 void* chpl_valloc(size_t size);
 void* chpl_pvalloc(size_t size);
 // end public interface
-
-// returns 0 if valid, EINVAL otherwise
-int chpl_posix_memalign_check_valid(size_t alignment);
 
 // runtime/include/mem/*/chpl-mem-impl.h defines
 // chpl_calloc, chpl_malloc, chpl_realloc, chpl_free

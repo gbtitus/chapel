@@ -152,9 +152,7 @@ void* chpl_alloc_pthread_stack(size_t stack_size){
 
   // uses memalign to align to page_size to simplify logic for the guard page
   // case but thread stacks could be allocated without such alignment
-  mem_buffer = chpl_memalign(page_size, mem_size);
-
-  if(mem_buffer == NULL){
+  if(chpl_posix_memalign(&mem_buffer, page_size, mem_size) != 0){
     return NULL;
   }
 

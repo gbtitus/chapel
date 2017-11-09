@@ -21,9 +21,6 @@
 #define _chpl_mem_sys_H_
 
 #include <stdlib.h>
-#ifdef __GLIBC__
-#include <malloc.h>  // get memalign
-#endif
 
 static inline void* sys_calloc(size_t n, size_t size) {
   return calloc(n, size);
@@ -33,16 +30,9 @@ static inline void* sys_malloc(size_t size) {
   return malloc(size);
 }
 
-static inline void* sys_memalign(size_t boundary, size_t size) {
-#ifdef __GLIBC__
-  return memalign(boundary, size);
-#else
-  void* ret = NULL;
-  int rc;
-  rc = posix_memalign(&ret, boundary, size);
-  if( rc == 0 ) return ret;
-  else return NULL;
-#endif
+static inline int sys_posix_memalign(void** memptr, size_t alignment,
+                                     size_t size) {
+  return posix_memalign(memptr, alignment, size);
 }
 
 static inline void* sys_realloc(void* ptr, size_t size) {
