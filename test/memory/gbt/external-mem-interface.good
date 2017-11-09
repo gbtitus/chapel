@@ -1,0 +1,7 @@
+calloc(): pass
+malloc(): pass
+realloc(): pass
+posix_memalign(): pass
+memalign(): pass
+valloc(): pass
+pvalloc(): pass
