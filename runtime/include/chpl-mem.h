@@ -40,7 +40,7 @@
    documented in a doc/rst/developer README
  */
 // start public interface
-static inline void* chpl_calloc(size_t n, size_t size);
+static inline void* chpl_calloc(size_t nmemb, size_t size);
 static inline void* chpl_malloc(size_t size);
 static inline void* chpl_realloc(void* ptr, size_t size);
 static inline int chpl_posix_memalign(void** ptr,

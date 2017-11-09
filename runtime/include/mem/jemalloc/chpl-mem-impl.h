@@ -52,8 +52,8 @@
 
 #define MALLOCX_NO_FLAGS 0
 
-static inline void* chpl_calloc(size_t n, size_t size) {
-  return CHPL_JE_CALLOC(n,size);
+static inline void* chpl_calloc(size_t nmemb, size_t size) {
+  return CHPL_JE_CALLOC(nmemb, size);
 }
 
 static inline void* chpl_malloc(size_t size) {

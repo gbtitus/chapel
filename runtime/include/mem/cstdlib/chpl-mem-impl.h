@@ -28,8 +28,8 @@
 #include <malloc/malloc.h>
 #endif
 
-static inline void* chpl_calloc(size_t n, size_t size) {
-  return sys_calloc(n,size);
+static inline void* chpl_calloc(size_t nmemb, size_t size) {
+  return sys_calloc(nmemb, size);
 }
 
 static inline void* chpl_malloc(size_t size) {
