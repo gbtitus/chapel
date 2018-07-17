@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/sysinfo.h>
 #include <sys/types.h>
@@ -494,6 +495,8 @@ static void*  registered_heap_start;
 static int hugepage_info_set;
 static pthread_once_t hugepage_once_flag = PTHREAD_ONCE_INIT;
 static size_t hugepage_size;
+
+static int arrays_on_regular_pages;
 
 //
 // Memory regions.  mem_regions contains the address/length pairs and
@@ -1842,6 +1845,9 @@ void chpl_comm_post_task_init(void)
   // the logical flow is clearer if we do all this in one place.
   //
 
+  arrays_on_regular_pages =
+    chpl_env_rt_get_bool("COMM_UGNI_REGULAR_PAGES_OKAY", false);
+
   //
   // Figure out how many comm domains we need.
   //
@@ -3155,7 +3161,14 @@ void* chpl_comm_impl_regMemAlloc(size_t size,
   // Try to get the memory.
   //
   PERFSTATS_TSTAMP(alloc_ts);
-  p = get_huge_pages(ALIGN_UP(size, get_hugepage_size()), GHP_DEFAULT);
+  if (arrays_on_regular_pages && desc == CHPL_RT_MD_ARRAY_ELEMENTS) {
+    p = mmap(NULL, ALIGN_UP(size, get_hugepage_size()),
+             PROT_READ | PROT_WRITE,
+             MAP_SHARED | MAP_ANONYMOUS | MAP_NORESERVE,
+             0, 0);
+  } else {
+    p = get_huge_pages(ALIGN_UP(size, get_hugepage_size()), GHP_DEFAULT);
+  }
   PERFSTATS_ADD(regMem_alloc_nsecs, PERFSTATS_TELAPSED(alloc_ts));
   if (p == NULL) {
     atomic_fetch_add_int_least32_t(&mreg_free_cnt, 1);
