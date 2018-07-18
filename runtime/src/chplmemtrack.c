@@ -248,36 +248,45 @@ static void addMemTableEntry(void *memAlloc, size_t number, size_t size,
   unsigned hashValue;
   memTableEntry* memEntry;
 
-  if ((totalEntries+1)*2 > hashSize && hashSizeIndex < NUM_HASH_SIZE_INDICES-1)
-    resizeTable(1);
-
   memEntry = (memTableEntry*) sys_calloc(1, sizeof(memTableEntry));
   if (!memEntry) {
     chpl_error("memtrack fault: out of memory allocating memtrack table",
                lineno, filename);
   }
 
-  hashValue = hash(memAlloc, hashSize);
-  memEntry->nextInBucket = memTable[hashValue];
-  memTable[hashValue] = memEntry;
   memEntry->description = description;
   memEntry->memAlloc = memAlloc;
   memEntry->lineno = lineno;
   memEntry->filename = filename;
   memEntry->number = number;
   memEntry->size = size;
+
+  memTrack_lock();
+
+  if ((totalEntries+1)*2 > hashSize && hashSizeIndex < NUM_HASH_SIZE_INDICES-1)
+    resizeTable(1);
+
+  hashValue = hash(memAlloc, hashSize);
+  memEntry->nextInBucket = memTable[hashValue];
+  memTable[hashValue] = memEntry;
   increaseMemStat(number*size, lineno, filename);
   totalEntries += 1;
+
+  memTrack_unlock();
 }
 
 
 static memTableEntry* removeMemTableEntry(void* address) {
+  memTrack_lock();
+
   unsigned hashValue = hash(address, hashSize);
   memTableEntry* thisBucketEntry = memTable[hashValue];
   memTableEntry* deletedBucket = NULL;
 
-  if (!thisBucketEntry)
+  if (!thisBucketEntry) {
+    memTrack_unlock();
     return NULL;
+  }
 
   if (thisBucketEntry->memAlloc == address) {
     memTable[hashValue] = thisBucketEntry->nextInBucket;
@@ -301,6 +310,9 @@ static memTableEntry* removeMemTableEntry(void* address) {
     if (totalEntries*8 < hashSize && hashSizeIndex > 0)
       resizeTable(-1);
   }
+
+  memTrack_unlock();
+
   return deletedBucket;
 }
 
@@ -651,9 +663,7 @@ void chpl_track_malloc(void* memAlloc, size_t number, size_t size,
                        int32_t lineno, int32_t filename) {
   if (number * size > memThreshold) {
     if (chpl_memTrack && chpl_mem_descTrack(description)) {
-      memTrack_lock();
       addMemTableEntry(memAlloc, number, size, description, lineno, filename);
-      memTrack_unlock();
     }
     if (chpl_verbose_mem) {
       fprintf(memLogFile, "%" FORMAT_c_nodeid_t ": %s:%" PRId32
@@ -667,10 +677,8 @@ void chpl_track_malloc(void* memAlloc, size_t number, size_t size,
 
 
 void chpl_track_free(void* memAlloc, int32_t lineno, int32_t filename) {
-  memTableEntry* memEntry = NULL;
   if (chpl_memTrack) {
-    memTrack_lock();
-    memEntry = removeMemTableEntry(memAlloc);
+    memTableEntry* memEntry = removeMemTableEntry(memAlloc);
     if (memEntry) {
       if (chpl_verbose_mem) {
         fprintf(memLogFile, "%" FORMAT_c_nodeid_t ": %s:%" PRId32
@@ -681,8 +689,7 @@ void chpl_track_free(void* memAlloc, int32_t lineno, int32_t filename) {
       }
       sys_free(memEntry);
     }
-    memTrack_unlock();
-  } else if (chpl_verbose_mem && !memEntry) {
+  } else if (chpl_verbose_mem) {
     fprintf(memLogFile, "%" FORMAT_c_nodeid_t ": %s:%" PRId32 ": free at %p\n",
             chpl_nodeID, (filename ? chpl_lookupFilename(filename) : "--"),
             lineno, memAlloc);
@@ -693,16 +700,12 @@ void chpl_track_free(void* memAlloc, int32_t lineno, int32_t filename) {
 void chpl_track_realloc_pre(void* memAlloc, size_t size,
                          chpl_mem_descInt_t description,
                          int32_t lineno, int32_t filename) {
-  memTableEntry* memEntry = NULL;
-
   if (chpl_memTrack && size > memThreshold) {
-    memTrack_lock();
     if (memAlloc) {
-      memEntry = removeMemTableEntry(memAlloc);
+      memTableEntry* memEntry = removeMemTableEntry(memAlloc);
       if (memEntry)
         sys_free(memEntry);
     }
-    memTrack_unlock();
   }
 }
 
@@ -713,9 +716,7 @@ void chpl_track_realloc_post(void* moreMemAlloc,
                          int32_t lineno, int32_t filename) {
   if (size > memThreshold) {
     if (chpl_memTrack && chpl_mem_descTrack(description)) {
-      memTrack_lock();
       addMemTableEntry(moreMemAlloc, 1, size, description, lineno, filename);
-      memTrack_unlock();
     }
     if (chpl_verbose_mem) {
       fprintf(memLogFile, "%" FORMAT_c_nodeid_t ": %s:%" PRId32
