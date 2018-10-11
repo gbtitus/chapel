@@ -148,16 +148,26 @@ static void chpl_stack_unwind(void){
 
 int verbosity = 1;
 
+
+static
+void msg_explicit_vs(char *restrict, size_t,
+                     int32_t, const char *restrict,
+                     const char *restrict,
+                     const char *restrict, va_list)
+       __attribute__((format(printf, 5, 0)));
+
+static
+void msg_explicit_v(FILE*,
+                    int32_t, const char *restrict,
+                    const char *restrict,
+                    const char *restrict, va_list)
+       __attribute__((format(printf, 5, 0)));
+
+
 void chpl_warning(const char* message, int32_t lineno, int32_t filenameIdx) {
-  const char* filename = NULL;
-  // squash warnings if --quiet flag is used
-  if (verbosity == 0) {
-    return;
-  }
-  if (filenameIdx != 0)
-    filename = chpl_lookupFilename(filenameIdx);
-  chpl_warning_explicit(message, lineno, filename);
+  chpl_warning_v(lineno, filenameIdx, "%s", message);
 }
+
 
 void chpl_warning_explicit(const char *message, int32_t lineno,
                            const char *filename) {
@@ -173,6 +183,23 @@ void chpl_warning_explicit(const char *message, int32_t lineno,
   else
     fprintf(stderr, "warning: %s\n", message);
 }
+
+
+void chpl_warning_v(int32_t lineno, int32_t filenameIdx,
+                    const char* restrict format, ...) {
+  // squash warnings if --quiet flag is used
+  if (verbosity == 0) {
+    return;
+  }
+
+  va_list ap;
+  va_start(ap, format);
+  msg_explicit_v(stderr, lineno,
+                 (filenameIdx == 0) ? NULL : chpl_lookupFilename(filenameIdx),
+                 "warning", format, ap);
+  va_end(ap);
+}
+
 
 #ifndef LAUNCHER
 static atomic_bool thisLocaleAlreadyExiting;
@@ -213,13 +240,6 @@ void chpl_error_explicit(const char *message, int32_t lineno,
 
 
 static
-void msg_explicit_vs(char *restrict, size_t,
-                     int32_t, const char *restrict,
-                     const char *restrict,
-                     const char *restrict, va_list)
-       __attribute__((format(printf, 5, 0)));
-
-static
 void msg_explicit_vs(char *restrict str, size_t size,
                      int32_t lineno, const char *restrict filename,
                      const char *restrict severity,
@@ -247,13 +267,6 @@ void msg_explicit_vs(char *restrict str, size_t size,
   }
 }
 
-
-static
-void msg_explicit_v(FILE*,
-                    int32_t, const char *restrict,
-                    const char *restrict,
-                    const char *restrict, va_list)
-       __attribute__((format(printf, 5, 0)));
 
 static
 void msg_explicit_v(FILE* f,

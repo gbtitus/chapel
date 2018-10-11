@@ -34,6 +34,9 @@ extern int verbosity;
 void chpl_warning(const char* message, int32_t lineno, int32_t filenameIdx);
 void chpl_warning_explicit(const char *message, int32_t lineno,
                            const char *filename);
+void chpl_warning_v(int32_t lineno, int32_t filenameIdx,
+                    const char* restrict format, ...)
+       __attribute__((format(printf, 3, 4)));
 void chpl_error_preformatted(const char* message);
 void chpl_error(const char* message, int32_t lineno, int32_t filenameIdx);
 void chpl_error_vs(char *restrict str, size_t size,
@@ -48,11 +51,23 @@ void chpl_internal_error_v(const char *restrict format, ...)
 #else
 // Filename is now an int32_t index into a table that we are not going to have
 // while the runtime is in unit test mode, just print out the message instead
-#define chpl_warning(message, lineno, filename)                                \
-  do {                                                                         \
-    fflush(stdout);                                                            \
-    fprintf(stderr, "warning: %s\n", message);                                 \
-  } while (0)
+static inline
+void chpl_msg_ap(int32_t, int32_t,
+                 const char* restrict, const char* restrict, va_list)
+        __attribute__((format(printf, 4, 0)));
+static inline
+void chpl_msg_ap(int32_t lineno, int32_t filenameIdx,
+                 const char* severity, const char* restrict format,
+                 va_list ap) {
+  fflush(stdout);
+  char myFmt[1024];
+  (void) snprintf(myFmt, sizeof(myFmt),
+                  "%" PRId32 ":%" PRId32 ": %s: %s\n", severity, format);
+  vfprintf(stderr, myFmt, ap);
+}
+
+#define chpl_warning(message, lineno, filenameIdx) \
+        chpl_warning_v(lineno, filenameIdx, "%s", msg)
 
 #define chpl_warning_explicit(message, lineno, filename)                       \
   do {                                                                         \
@@ -60,6 +75,18 @@ void chpl_internal_error_v(const char *restrict format, ...)
     fprintf(stderr, "%s:%" PRId32 ": warning: %s\n", filename, lineno,         \
             message);                                                          \
   } while (0)
+
+static inline
+void chpl_warning_v(int32_t, int32_t, const char* restrict, ...)
+        __attribute__((format(printf, 3, 4)));
+static inline
+void chpl_warning_v(int32_t lineno, int32_t filenameIdx,
+                    const char* restrict format, ...) {
+  va_list ap;
+  va_start(ap, format);
+  chpl_msg_ap(lineno, filenameIdx, "warning", format, ap);
+  va_end(ap);
+}
 
 #define chpl_error(message, lineno, filename)                                  \
   do {                                                                         \
@@ -104,14 +131,10 @@ void chpl_internal_error_v(const char *restrict, ...)
 
 static inline
 void chpl_internal_error_v(const char *restrict format, ...) {
-  fflush(stdout);
-  fprintf(stderr, "internal error: ");
-
   va_list ap;
   va_start(ap, format);
-  vfprintf(stderr, format, ap);
+  chpl_msg_ap(lineno, filenameIdx, "internal error", format, ap);
   va_end(ap);
-
   exit(1);
 }
 #endif
