@@ -44,26 +44,26 @@ ifeq ($(CHPL_MAKE_TARGET_PLATFORM),pwr6)
 CHPL_GASNET_CFG_OPTIONS += -with-mpi-cc=mpcc
 endif
 
-ifneq (, $(filter $(CHPL_MAKE_TARGET_PLATFORM),cray-xe cray-xc cray-xk))
+ifneq (, $(filter $(CHPL_MAKE_TARGET_PLATFORM),cray-shasta cray-xe cray-xc cray-xk))
 CHPL_GASNET_CFG_OPTIONS += --enable-pthreads
 ifeq ($(CHPL_MAKE_COMM_SUBSTRATE),gemini)
 CHPL_GASNET_CFG_OPTIONS += --enable-gemini-multi-domain
 CHPL_GASNET_CFG_OPTIONS += --disable-aries --disable-mpi --disable-smp --disable-ofi
-else
-ifeq ($(CHPL_MAKE_COMM_SUBSTRATE),aries)
+else ifeq ($(CHPL_MAKE_COMM_SUBSTRATE),aries)
 CHPL_GASNET_CFG_OPTIONS += --enable-aries-multi-domain
 CHPL_GASNET_CFG_OPTIONS += --disable-gemini --disable-mpi --disable-smp --disable-ofi
-else
-ifeq ($(CHPL_MAKE_COMM_SUBSTRATE),mpi)
+else ifeq ($(CHPL_MAKE_COMM_SUBSTRATE),mpi)
 CHPL_GASNET_CFG_OPTIONS += --disable-gemini --disable-aries --disable-smp --disable-ofi
 else
 # We need to do this because the auto-detect stuff for gemini is not
 # yet working as well as the portals auto-detect
 CHPL_GASNET_CFG_OPTIONS += --disable-gemini --disable-aries
 endif
-endif
-endif
-ifeq ($(CHPL_MAKE_TARGET_PLATFORM),cray-xc)
+
+ifeq ($(CHPL_MAKE_TARGET_PLATFORM),cray-shasta)
+CHPL_GASNET_CFG_SCRIPT=cross-configure-cray-slingshot-slurm
+CRAY_CROSS_CONFIGURE=y
+else ifeq ($(CHPL_MAKE_TARGET_PLATFORM),cray-xc)
 CHPL_GASNET_CFG_SCRIPT=cross-configure-cray-aries-alps
 CRAY_CROSS_CONFIGURE=y
 else
