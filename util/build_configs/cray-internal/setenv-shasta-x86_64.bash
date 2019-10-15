@@ -128,21 +128,19 @@ if [ -z "$BUILD_CONFIGS_CALLBACK" ]; then
 
         compilers=gnu
         comms=none,ofi
-        tasks=qthreads
         launchers=slurm-srun
         substrates=none
         locale_models=flat
-        auxfs=none
+        auxfs=none,lustre
         regexp=re2
         llvm=none
-        libpics=none
+        libpics=none,pic
 
         log_info "Start build_configs $dry_run $verbose # no make target"
 
         $cwd/../build_configs.py -p $dry_run $verbose -s $cwd/$setenv -l "$project.runtime.log" \
             --target-compiler=$compilers \
             --comm=$comms \
-            --tasks=$tasks \
             --launcher=$launchers \
             --substrate=$substrates \
             --locale-model=$locale_models \
@@ -340,12 +338,9 @@ else
     fi
 
     # Please keep the gen versions in compiler_versions.bash the same as these!
-    #[TODO] gen_version_gcc=7.3.0
-    #[TODO] gen_version_intel=16.0.3.210
-    #[TODO] gen_version_cce=8.6.3
-    #[TODO] if [ "$CHPL_LOCALE_MODEL" == knl ]; then
-    #[TODO]     gen_version_cce=8.7.3
-    #[TODO] fi
+    gen_version_gcc=7.3.0
+    gen_version_intel=16.0.3.210
+    gen_version_cce=8.7.8
 
     target_cpu_module=craype-sandybridge
 
@@ -360,7 +355,7 @@ else
 
         # load target PrgEnv with compiler version
         load_module $target_prgenv
-        #[TODO] load_module_version $target_compiler $target_version 
+        load_module_version $target_compiler $target_version
     }
 
     function load_prgenv_intel() {
@@ -374,7 +369,7 @@ else
 
         # load target PrgEnv with compiler version
         load_module $target_prgenv
-        #[TODO] load_module_version $target_compiler $target_version
+        load_module_version $target_compiler $target_version
     }
 
     function load_prgenv_cray() {
@@ -388,17 +383,16 @@ else
 
         # load target PrgEnv with compiler version
         load_module $target_prgenv
-        #[TODO] load_module_version $target_compiler $target_version
+        load_module_version $target_compiler $target_version
 
         # pin to an mpich version compatible with the gen compiler
-        #[TODO] load_module_version cray-mpich 7.7.7
+        load_module_version cray-mpich 7.7.7
     }
 
     function load_target_cpu() {
 
         # legacy
-        unload_module perftools-base acml totalview atp cray-libsci xt-libsci
-        #[TODO] load_module cray-libsci
+        unload_module perftools-base acml totalview atp xt-libsci
 
         case "$1" in ( "" ) log_error "load_target_cpu missing arg 1"; exit 2;; esac
         local target=$1
@@ -409,14 +403,12 @@ else
     }
 
     function use_python27() {
-        if \! $(python --version 2>&1 | grep -q ' 2\.7\>') ; then
-            log_info "Using Python 2.7 from /cray/css/users/chapelu/setup_python27.bash"
-            if [ ! -f /cray/css/users/chapelu/setup_python27.bash ] ; then
-                log_error "Python 2.7 setup script is not accessible at /cray/css/users/chapelu/setup_python27.bash"
-                exit 1
-            fi
-            source /cray/css/users/chapelu/setup_python27.bash
+        log_info "Using Python 2.7 from /cray/css/users/chapelu/setup_python27.bash"
+        if [ ! -f /cray/css/users/chapelu/setup_python27.bash ] ; then
+            log_error "Python 2.7 setup script is not accessible at /cray/css/users/chapelu/setup_python27.bash"
+            exit 1
         fi
+        source /cray/css/users/chapelu/setup_python27.bash
     }
 
     # ---
@@ -444,14 +436,11 @@ else
         # enable building Chapel python-venv tools anyway.
         # For example, the following gives a URL to a local PyPI mirror that accepts http,
         # and the location of a pre-installed "pip" on the host machine.
-        if [[ -f /cray/css/users/chapelu/opt/lib/pip/__main__.py ]] ; then
-          export CHPL_EASY_INSTALL_PARAMS="-i http://slemaster.us.cray.com/pypi/simple"
-          export CHPL_PIP_INSTALL_PARAMS="-i http://slemaster.us.cray.com/pypi/simple --trusted-host slemaster.us.cray.com"
-          export CHPL_PIP=/cray/css/users/chapelu/opt/lib/pip/__main__.py
-          export CHPL_PYTHONPATH=/cray/css/users/chapelu/opt/lib
-        else
-          export CHPL_PIP=/usr/bin/pip
-        fi
+
+        export CHPL_EASY_INSTALL_PARAMS="-i http://slemaster.us.cray.com/pypi/simple"
+        export CHPL_PIP_INSTALL_PARAMS="-i http://slemaster.us.cray.com/pypi/simple --trusted-host slemaster.us.cray.com"
+        export CHPL_PIP=/cray/css/users/chapelu/opt/lib/pip/__main__.py
+        export CHPL_PYTHONPATH=/cray/css/users/chapelu/opt/lib
         ;;
     ( venv_py27 )
         load_prgenv_gnu
