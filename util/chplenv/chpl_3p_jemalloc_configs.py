@@ -20,10 +20,12 @@ def get_jemalloc_config_file():
 def get_link_args(target_mem):
     if target_mem == 'jemalloc':
         jemalloc_config = get_jemalloc_config_file()
-        libs = ['-ljemalloc']
         if os.access(jemalloc_config, os.X_OK):
-            jemalloc_libs = run_command([jemalloc_config, '--libs'])
-            libs += jemalloc_libs.split()
+            libdir = run_command([jemalloc_config, '--libdir']).strip()
+            libs = ['-L' + libdir, '-Wl,-rpath,' + libdir, '-ljemalloc']
+            libs += run_command([jemalloc_config, '--libs']).strip().split()
+        else:
+            libs = ['-ljemalloc']
         return libs
     elif target_mem == 'system':
         return ['-ljemalloc']

@@ -137,12 +137,15 @@ def pkgconfig_get_system_version(pkg):
 #
 # This returns the default link args for the given third-party package.
 #
-def default_get_link_args(pkg, ucp='', libs=[]):
+def default_get_link_args(pkg, ucp='', libs=[], rpath=True):
     if ucp == '':
         ucp = default_uniq_cfg_path()
     if libs == []:
         libs = [ 'lib' + pkg + '.la' ]
-    all_args = []
+    libdir = os.path.join(get_cfg_install_path(pkg, ucp), 'lib')
+    all_args = [ '-L' + libdir ]
+    if rpath:
+        all_args.append('-Wl,-rpath,' + libdir)
     for lib_arg in libs:
         if lib_arg.endswith('.la'):
             la = os.path.join(get_cfg_install_path(pkg, ucp), 'lib', lib_arg)

@@ -16,4 +16,3 @@
 # limitations under the License.
 
 GEN_CFLAGS += -I$(QTHREAD_INCLUDE_DIR)
-GEN_LFLAGS += -L$(QTHREAD_LIB_DIR) -Wl,-rpath,$(QTHREAD_LIB_DIR)
