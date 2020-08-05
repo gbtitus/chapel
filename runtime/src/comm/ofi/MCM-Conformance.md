@@ -1,13 +1,13 @@
-## MCM Adherence in CHPL_COMM=ofi
+## MCM Conformance in CHPL_COMM=ofi
 
-This describes how the libfabric-based comm layer arranges to adhere to
+This describes how the libfabric-based comm layer arranges to conform to
 the Chapel Memory Consistency Model (MCM).  In outline form it follows
 the structure of the *Memory Order* section of the **Memory Consistency
 Model** chapter of the Chapel spec.
 
 Caveat: the comm layer does not currently make an explicit attempt to
-meet the MCM when RMA-based (native) atomic operations are done.  It
-only does so when atomic operations are done using AMs (Active
+conform to the MCM when RMA-based (native) atomic operations are done.
+It only does so when atomic operations are done using AMs (Active
 Messages).
 
 ### Memory Order
