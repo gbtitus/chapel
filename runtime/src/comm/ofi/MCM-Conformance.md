@@ -58,6 +58,8 @@ by using `FI_DELIVERY_COMPLETE` completion semantics, or by asserting
 `FI_ORDER_ATOMIC_RAW` also, but we don't assert that yet.  Note that
 ***native atomic operations are not yet tested***.
 
+---
+
 #### Clause 2
 
 Every SC atomic operation gets its value from the last SC atomic
@@ -67,6 +69,8 @@ _<<sub>m</sub>_:
 - Value of _A<sub>sc</sub>(a)_ = Value of _max<sub><<sub>m</sub></sub>
   (A<sub>sc</sub>'(a)|A<sub>sc</sub>'(a) <<sub>m</sub>
   A<sub>sc</sub>(a))_
+
+---
 
 #### Clause 3
 
