@@ -88,15 +88,15 @@ then switch to nonblocking ones after that.
 Note that there is one potential hole here.  We currently only do the AM
 "fence" described above before initiating `executeOn` AMs for
 on-statements and before terminating a task.  We don't do it before
-creating local tasks.  If everything worked out right (or wrong
-depending on your point of view), one could imagine a task initiating a
-nonfetching atomic operation _A<sub>sc</sub>(a)_ using a nonblocking AM,
-then starting a local child task, and the child task doing an atomic
+creating local tasks.  One can imagine a task initiating a nonfetching
+atomic operation _A<sub>sc</sub>(a)_ using a nonblocking AM, then
+starting a local child task, and the child task doing an atomic
 operation _A<sub>sc</sub>'(a)_ through a different libfabric endpoint
-pair (so transaction ordering isn't applicable) and _A<sub>sc</sub>'(a)_
-operating upon the value _a_ had before _A<sub>sc</sub>(a)_ rather than
-after it.  As far as we know this has never happened, but there isn't
-any code to explicitly prevent it, which needs to be fixed.
+pair.  Transaction ordering only applies within an endpoint pair, not
+across them.  It would then be possible for _A<sub>sc</sub>'(a)_ to
+operate upon _a_ before _A<sub>sc</sub>(a)_ did rather than after it.
+As far as we know this has never happened, but there isn't any code to
+explicitly prevent it.  This needs to be fixed.
 
 ***I WAS HERE***
 
