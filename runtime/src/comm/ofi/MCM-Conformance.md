@@ -34,7 +34,7 @@ operations*.
 
 ### Memory Order
 
-##### Clause 1
+#### Clause 1
 
 The memory order _<<sub>m</sub>_ of SC atomic operations in a given
 task respects program order as follows:
@@ -56,9 +56,9 @@ by using `FI_DELIVERY_COMPLETE` completion semantics, or by asserting
 `FI_ORDER_ATOMIC_WAR` (write-after-read for atomics) and
 `FI_ORDER_ATOMIC_WAW` (write-after-write for atomics).  We probably need
 `FI_ORDER_ATOMIC_RAW` also, but we don't assert that yet.  Note that
-such native atomic operations are _not yet tested_.
+***native atomic operations are not yet tested***.
 
-##### Clause 2
+#### Clause 2
 
 Every SC atomic operation gets its value from the last SC atomic
 operation before it to the same address in the total order
@@ -68,7 +68,7 @@ _<<sub>m</sub>_:
   (A<sub>sc</sub>'(a)|A<sub>sc</sub>'(a) <<sub>m</sub>
   A<sub>sc</sub>(a))_
 
-##### Clause 3
+#### Clause 3
 
 For data-race-free programs, every load gets its value from the last
 store before it to the same address in the total order _<<sub>m</sub>_:
