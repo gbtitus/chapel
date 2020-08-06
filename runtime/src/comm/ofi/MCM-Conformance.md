@@ -1,14 +1,16 @@
 ## MCM Conformance in CHPL_COMM=ofi
 
 This describes how the libfabric-based comm layer arranges to conform to
-the Chapel Memory Consistency Model (MCM).  In outline form it follows
-the structure of the *Program Order* and *Memory Order* sections of the
-**Memory Consistency Model** chapter of the Chapel spec.
+the Chapel Memory Consistency Model (MCM).  It quotes the *Program
+Order* and *Memory Order* sections of the **Memory Consistency Model**
+chapter of the Chapel spec, and after each clause in the *Memory Order*
+section, add text describing what the implementation does to meet that
+clause.
 
-Caveat: the comm layer currently does not make any purposeful attempt to
-conform to the MCM when atomic operations are done natively, using RMA.
-It only does so when atomic operations are done using Active Messages
-(AMs).
+Caveat: the comm layer currently does not yet make a purposeful attempt
+to conform to the MCM when atomic operations are done natively, using
+RMA.  It only does so when atomic operations are implemented using
+Active Messages (AMs).
 
 ### Program Order
 
@@ -34,22 +36,65 @@ operations*.
 
 ### Memory Order
 
-#### Clause 1
-
 The memory order _<<sub>m</sub>_ of SC atomic operations in a given
 task respects program order as follows:
 
 - If _A<sub>sc</sub>(a) <<sub>p</sub> A<sub>sc</sub>(b)_ then
   _A<sub>sc</sub>(a) <<sub>m</sub> A<sub>sc</sub>(b)_
 
+#### Implementation
+
 `FI_ORDER_SAS` (send-after-send) is always asserted.  This ensures that
 atomic operations implemented via AMs are transmitted in program order
 within a task.  Since those use "fast" AMs which are executed directly
 by the handled and each receiving node only runs a single AM handler,
 since those AMs arrive in program order they must be executed in program
-order as well.  Non-fetching atomic operations don't generate responses
-from the target node, but the transaction ordering is sufficient for
-ordering anyway.
+order as well.
+
+Program order involves not only intra-task execution but also task
+creation and termination.  Any atomic operations done by a parent task
+before it creates a child task must be visible in that child.  For
+fetching atomic operations this is automatic; since we don't return from
+the comm layer until the result is returned to the initiating node, the
+target datum surely must have been updated before any task is created
+afterward.
+
+For nonfetching atomic operations the situation is more complicated.
+Here we don't have to wait for a result and so would prefer to use
+non-blocking AMs because they are quicker.  Transaction ordering ensures
+MCM conformance within a single task, but guaranteeing visibility means
+we have to make sure those AMs are complete before parent tasks create
+child tasks (including for on-statements) and before tasks terminate.
+To achieve this, just before initiating AMs for on-statements and just
+before tasks terminate we something like an AM "fence": we send "fast"
+blocking no-op AMs to every node we've targeted with a nonfetching
+atomic operation AM since the last blocking AM to that same node.  With
+send-after-send ordering and a single AM handler at each node, once we
+see the response from that no-op AM we know all prior atomic operation
+AMs must also be done.
+
+We could choose to do any remote atomic operation AMs as either blocking
+or non-blocking.  The latter are enough quicker that they are worth
+using even if the task doesn't do very many nonfetching AMO AMs between
+task creations or before terminating.  And of course nearly all tasks do
+at least one atomic operation, for the `_downEndCount()` when they end.
+In the current implementation after each AM "fence" we do the next 3
+nonfetching AMOs with blocking AMs and then switch to nonblocking ones
+after that.
+
+Note that there is one potential hole here.  We currently only do the AM
+"fence" described above before initiating `executeOn` AMs for
+on-statements and before terminating a task.  We don't do it before
+creating local tasks.  If everything worked out right (or wrong
+depending on your point of view), one could imagine a task initiating a
+nonfetching atomic operation _A<sub>sc</sub>(a)_ using a nonblocking AM,
+starting a local child task, and then the child task doing an atomic
+operation _A<sub>sc</sub>'(a)_ through a different libfabric endpoint
+pair and seeing the value of _a_ from before _A<sub>sc</sub>(a)_ rather
+than from after it.  As far as we know this has never happened, but
+there isn't any code to explicitly prevent it, which needs to be fixed.
+
+***I WAS HERE***
 
 Atomic operations implemented natively in libfabric are ordered either
 by using `FI_DELIVERY_COMPLETE` completion semantics, or by asserting
@@ -60,8 +105,6 @@ by using `FI_DELIVERY_COMPLETE` completion semantics, or by asserting
 
 ---
 
-#### Clause 2
-
 Every SC atomic operation gets its value from the last SC atomic
 operation before it to the same address in the total order
 _<<sub>m</sub>_:
@@ -70,15 +113,23 @@ _<<sub>m</sub>_:
   (A<sub>sc</sub>'(a)|A<sub>sc</sub>'(a) <<sub>m</sub>
   A<sub>sc</sub>(a))_
 
----
+#### Implementation
 
-#### Clause 3
+***Content needed here.***
+
+---
 
 For data-race-free programs, every load gets its value from the last
 store before it to the same address in the total order _<<sub>m</sub>_:
 
 - Value of _L(a)_ = Value of _max<sub><<sub>m</sub></sub> (S(a)|S(a)
   <<sub>m</sub> L(a)_ or _S(a) <<sub>p</sub> L(a))_
+
+#### Implementation
+
+***Content needed here.***
+
+---
 
 For data-race-free programs, loads and stores are ordered with SC
 atomics.  That is, loads and stores for a given task are in total order
@@ -97,6 +148,12 @@ of loads and stores relative to SC atomic operations:
 - If _A<sub>sc</sub>(a) <<sub>p</sub> S(b)_ then _A<sub>sc</sub>(a)
   <<sub>m</sub> S(b)_
 
+#### Implementation
+
+***Content needed here.***
+
+---
+
 For data-race-free programs, loads and stores preserve sequential
 program behavior.  That is, loads and stores to the same address in a
 given task are in the order _<<sub>m</sub>_ respecting the following rules
@@ -107,3 +164,7 @@ which preserve sequential program behavior:
 - If _L(a) <<sub>p</sub> S(a)_ then _L(a) <<sub>m</sub> S(a)_
 
 - If _S(a) <<sub>p</sub> S'(a)_ then _S(a) <<sub>m</sub> S'(a)_
+
+#### Implementation
+
+***Content needed here.***
