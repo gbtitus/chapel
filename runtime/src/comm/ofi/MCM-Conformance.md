@@ -46,18 +46,20 @@ task respects program order as follows:
 
 `FI_ORDER_SAS` (send-after-send) is always asserted.  This ensures that
 atomic operations implemented via AMs are transmitted in program order
-within a task.  Since those use "fast" AMs which are executed directly
-by the handled and each receiving node only runs a single AM handler,
-since those AMs arrive in program order they must be executed in program
-order as well.
+within a task.  And because those are "fast" AMs which are executed
+directly by the handled and each receiving node only runs a single AM
+handler, if they arrive in program order they must be executed in
+program order as well.
 
 Program order involves not only intra-task execution but also task
 creation and termination.  Any atomic operations done by a parent task
-before it creates a child task must be visible in that child.  For
-fetching atomic operations this is automatic; since we don't return from
-the comm layer until the result is returned to the initiating node, the
-target datum surely must have been updated before any task is created
-afterward.
+before it creates a child task must be visible in that child, and any
+atomic operations done by a task must be visible in any other task which
+has waited for that task to terminate.  For fetching atomic operations
+this visibility automatic; since we don't return from the comm layer
+until the result comes back to the initiating node, the target datum
+surely must have been updated before the initiating task creates any
+other task or terminates.
 
 For nonfetching atomic operations the situation is more complicated.
 Here we don't have to wait for a result and so would prefer to use
@@ -66,7 +68,7 @@ MCM conformance within a single task, but guaranteeing visibility means
 we have to make sure those AMs are complete before parent tasks create
 child tasks (including for on-statements) and before tasks terminate.
 To achieve this, just before initiating AMs for on-statements and just
-before tasks terminate we something like an AM "fence": we send "fast"
+before tasks terminate we do an AM-mediated "fence": we send "fast"
 blocking no-op AMs to every node we've targeted with a nonfetching
 atomic operation AM since the last blocking AM to that same node.  With
 send-after-send ordering and a single AM handler at each node, once we
@@ -74,13 +76,14 @@ see the response from that no-op AM we know all prior atomic operation
 AMs must also be done.
 
 We could choose to do any remote atomic operation AMs as either blocking
-or non-blocking.  The latter are enough quicker that they are worth
-using even if the task doesn't do very many nonfetching AMO AMs between
-task creations or before terminating.  And of course nearly all tasks do
-at least one atomic operation, for the `_downEndCount()` when they end.
-In the current implementation after each AM "fence" we do the next 3
-nonfetching AMOs with blocking AMs and then switch to nonblocking ones
-after that.
+or non-blocking.  The latter are quicker but may require a following AM
+"fence" to guarantee visibility.  It turns out that they are enough
+quicker it's worth using them even if the task doesn't do very many
+nonfetching AMO AMs between task creations or before terminating.  And
+of course nearly all tasks do at least one atomic operation, for the
+`_downEndCount()` when they end.  In the current implementation after
+each AM "fence" we do the next 3 nonfetching AMOs with blocking AMs and
+then switch to nonblocking ones after that.
 
 Note that there is one potential hole here.  We currently only do the AM
 "fence" described above before initiating `executeOn` AMs for
@@ -88,11 +91,12 @@ on-statements and before terminating a task.  We don't do it before
 creating local tasks.  If everything worked out right (or wrong
 depending on your point of view), one could imagine a task initiating a
 nonfetching atomic operation _A<sub>sc</sub>(a)_ using a nonblocking AM,
-starting a local child task, and then the child task doing an atomic
+then starting a local child task, and the child task doing an atomic
 operation _A<sub>sc</sub>'(a)_ through a different libfabric endpoint
-pair and seeing the value of _a_ from before _A<sub>sc</sub>(a)_ rather
-than from after it.  As far as we know this has never happened, but
-there isn't any code to explicitly prevent it, which needs to be fixed.
+pair (so transaction ordering isn't applicable) and _A<sub>sc</sub>'(a)_
+operating upon the value _a_ had before _A<sub>sc</sub>(a)_ rather than
+after it.  As far as we know this has never happened, but there isn't
+any code to explicitly prevent it, which needs to be fixed.
 
 ***I WAS HERE***
 
