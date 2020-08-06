@@ -34,18 +34,31 @@ operations*.
 
 ### Memory Order
 
+##### Clause 1
+
 The memory order _<<sub>m</sub>_ of SC atomic operations in a given
 task respects program order as follows:
 
 - If _A<sub>sc</sub>(a) <<sub>p</sub> A<sub>sc</sub>(b)_ then
   _A<sub>sc</sub>(a) <<sub>m</sub> A<sub>sc</sub>(b)_
 
-- `FI_ORDER_SAS` (send-after-send) is always asserted.  This ensures
-  that AMOs implemented via AMs are transmitted in program order within
-  a task, and since those are "fast" AMs and each receiving node only
-  runs a single AM handler, they must be executed in program order as
-  well.  Non-fetching AMOs don't generate responses from the target
-  node, but the transaction ordering is nevertheless sufficient.
+`FI_ORDER_SAS` (send-after-send) is always asserted.  This ensures that
+atomic operations implemented via AMs are transmitted in program order
+within a task.  Since those use "fast" AMs which are executed directly
+by the handled and each receiving node only runs a single AM handler,
+since those AMs arrive in program order they must be executed in program
+order as well.  Non-fetching atomic operations don't generate responses
+from the target node, but the transaction ordering is sufficient for
+ordering anyway.
+
+Atomic operations implemented natively in libfabric are ordered either
+by using `FI_DELIVERY_COMPLETE` completion semantics, or by asserting
+`FI_ORDER_ATOMIC_WAR` (write-after-read for atomics) and
+`FI_ORDER_ATOMIC_WAW` (write-after-write for atomics).  We probably need
+`FI_ORDER_ATOMIC_RAW` also, but we don't assert that yet.  Note that
+such native atomic operations are _not yet tested_.
+
+##### Clause 2
 
 Every SC atomic operation gets its value from the last SC atomic
 operation before it to the same address in the total order
@@ -54,6 +67,8 @@ _<<sub>m</sub>_:
 - Value of _A<sub>sc</sub>(a)_ = Value of _max<sub><<sub>m</sub></sub>
   (A<sub>sc</sub>'(a)|A<sub>sc</sub>'(a) <<sub>m</sub>
   A<sub>sc</sub>(a))_
+
+##### Clause 3
 
 For data-race-free programs, every load gets its value from the last
 store before it to the same address in the total order _<<sub>m</sub>_:
