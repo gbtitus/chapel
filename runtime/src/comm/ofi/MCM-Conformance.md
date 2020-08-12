@@ -19,6 +19,8 @@ tasks.  The libfabric tools the comm layer has to work with adjust
 either when completion events for individual transactions are generated
 or how transactions are ordered.
 
+##### Completion Levels
+
 Completions may be generated either at a default time chosen by the
 provider, or they can be delayed until "delivery" has occurred by
 setting `FI_DELIVERY_COMPLETE` when choosing the provider.  The usual
@@ -26,16 +28,19 @@ default for providers is `FI_TRANSMIT_COMPLETE`, which for the reliable
 endpoints used by comm=ofi means that the transaction has arrived at the
 peer and is no longer dependent on the fabric or local resources.  It
 does not say anything about the state of the transaction at the remote
-node.  However, note that for transactions that return data to the
-initiator, such as RMA GETs and fetching atomics, the initiator is
-treated as a target and transmit-complete also means that the received
-data has been placed in the local buffer.  Delivery-complete, on the
-other hand, for messages means that the message data has been placed in
-the user buffer at the target node.  For RMA it means that the receiving
-data location, on the target node for PUTs and non-fetching atomics and
-on the local node for GETs and fetching atomics, has been updated.  So
-for RMA GETs and fetching atomics, transmit-complete and
-delivery-complete are the same.
+node.  Delivery-complete, on the other hand, for messages means that the
+message data has been placed in the user buffer at the target node.  For
+RMA it means that the receiving data location, on the target node for
+PUTs and non-fetching atomics and on the local node for GETs and
+fetching atomics, has been updated.
+
+For transactions that return data to the initiator, such as RMA GETs and
+fetching atomics, the default completion level is to treat the initiator
+as a target and not generate the completion until the received data has
+been placed in the local buffer.  So for RMA GETs and fetching atomics,
+transmit-complete and the default completion mode are the same.
+
+##### Transaction Ordering
 
 Transaction ordering limits how the provider can reorder transactions
 between when they are initiated and when they are handled on the target
@@ -65,9 +70,19 @@ an RMA PUT back to a flag variable on the initiator, done by the comm
 layer itself.)  Blocking AMs do not have MCM implications with respect
 to later transactions, because they are synchronous; the transaction is
 certainly complete by the time a blocking AM is done.  Of the AM types
-with MCM implications, only executeOn and AMOs AMs can be nonblocking.
-Furthermore, nonblocking since executeOn AMs are only used internally,
+with MCM implications, only executeOn and AMO AMs can be nonblocking.
+Furthermore, because nonblocking executeOn AMs are only used internally,
 it's really just AMO AMs whose ordering we need to be concerned about.
+
+Currently the comm layer always sets send-after-send (`FI_ORDER_SAS`)
+ordering, with the result that all AMs from a task are sent and received
+in program order.  This is arguably overkill, since really we only need
+to make sure any sequence of AMO AMs is done in order and that the last
+of those is complete before any we initiate any following executeOn AM.
+That said, we don't have any evidence that send-after-send ordering is
+causing any significant performance degradation, especially beyond what
+would result from using any other technique for ensuring this aspect of
+MCM conformance.
 
 ### Program Order
 
