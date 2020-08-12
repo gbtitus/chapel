@@ -15,9 +15,13 @@ are implemented using Active Messages (AMs).
 #### Background
 
 The Chapel MCM is defined in terms of program and memory order within
-tasks.  The libfabric tools the comm layer has to work with adjust
-either when completion events for individual transactions are generated
-or how transactions are ordered.
+tasks.  To achieve MCM conformance, the comm layer has two libfabric
+tools it can use:
+- completion levels that adjust what effects of transactions must have
+  occurred or in some sense be visible before the event indicating
+  transaction completion is seen, and
+- transaction ordering settings that specify how transactions may or may
+  not be be reordered.
 
 ##### Completion Levels
 
