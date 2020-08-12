@@ -63,20 +63,21 @@ tasks can move from thread to thread, then libfabric transaction
 ordering can only affect the transactions done while the task is holding
 a specific transmit endpoint, during which it is not allowed to yield.
 
-The comm layer uses the messaging interface (SEND/RECV) for Active
-Messages (AMs).  It defines a number of AM types, but there are only MCM
-implications for those that implement executeOn (on-statement bodies),
-RMA on unregistered remote addresses, and AMOs with providers that don't
-support native atomic operations.  AMs can either be nonblocking ("fire
-and forget") or blocking, where the initiator waits for the target to
-send back a "done" response.  (This is not a libfabric completion; it is
-an RMA PUT back to a flag variable on the initiator, done by the comm
-layer itself.)  Blocking AMs do not have MCM implications with respect
-to later transactions, because they are synchronous; the transaction is
-certainly complete by the time a blocking AM is done.  Of the AM types
-with MCM implications, only executeOn and AMO AMs can be nonblocking.
-Furthermore, because nonblocking executeOn AMs are only used internally,
-it's really just AMO AMs whose ordering we need to be concerned about.
+The comm layer uses the libfabric messaging interface (SEND/RECV) for
+Active Messages (AMs).  It defines a number of AM types, but there are
+only MCM implications for those that implement executeOn (on-statement
+bodies), RMA on unregistered remote addresses, and AMOs with providers
+that don't support native atomic operations.  AMs can either be
+nonblocking ("fire and forget") or blocking, where the initiator waits
+for the target to send back a "done" response.  (This is not a libfabric
+completion; it is an RMA PUT back to a flag variable on the initiator,
+done by the comm layer itself.)  Because they are synchronous, blocking
+AMs do not have MCM implications with respect to later transactions; all
+the effects of the AM are certainly visible by the time a blocking AM is
+done.  Of the AM types with MCM implications, only executeOn and AMO AMs
+can be nonblocking.  Furthermore, because nonblocking executeOn AMs are
+only used internally, it's really just AMO AMs whose ordering we need to
+be concerned about.
 
 Currently the comm layer always sets send-after-send (`FI_ORDER_SAS`)
 ordering, with the result that all AMs from a task are sent and received
@@ -87,6 +88,15 @@ That said, we don't have any evidence that send-after-send ordering is
 causing any significant performance degradation, especially beyond what
 would result from using any other technique for ensuring this aspect of
 MCM conformance.
+
+The comm layer uses the libfabric RMA interface (READ/WRITE/ATOMIC) for
+GETs, PUTs, and native AMOs.  (Note that even if the provider can
+support atomics natively, if the network cannot do so we typically won't
+use that capability because the provider won't advertise it.)  Various
+forms of read-after-write transaction ordering are always used for RMA
+MCM conformance, but there are also some ad-hoc techniques built on top
+of this for various specific needs, as detailed under the *Memory Order*
+clauses.
 
 ### Program Order
 
