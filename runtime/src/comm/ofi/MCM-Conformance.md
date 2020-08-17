@@ -18,25 +18,34 @@ The Chapel MCM is defined in terms of program and memory order within
 tasks.  To achieve MCM conformance, the comm layer has two libfabric
 tools it can use:
 - completion levels that adjust what effects of transactions must have
-  occurred or in some sense be visible before the event indicating
-  transaction completion is seen, and
+  occurred and thus be visible before the event indicating transaction
+  completion is seen by the originating task, and
 - transaction ordering settings that specify how transactions may or may
-  not be be reordered.
+  not be be reordered by libfabric or the provider.
 
 ##### Completion Levels
 
-Completions may be generated either at a default time chosen by the
-provider, or they can be delayed until "delivery" has occurred by
-setting `FI_DELIVERY_COMPLETE` when choosing the provider.  The usual
-default for providers is `FI_TRANSMIT_COMPLETE`, which for the reliable
-endpoints used by comm=ofi means that the transaction has arrived at the
-peer and is no longer dependent on the fabric or local resources.  It
-does not say anything about the state of the transaction at the remote
-node.  Delivery-complete, on the other hand, for messages means that the
-message data has been placed in the user buffer at the target node.  For
-RMA it means that the receiving data location, on the target node for
-PUTs and non-fetching atomics and on the local node for GETs and
-fetching atomics, has been updated.
+Libfabric's completion level specifies what state transactions have to
+reach before callers are informed they are "done", in some sense.  The
+comm layer can use either the provider's default completion level, which
+is usually transmit-complete, or the delivery-complete level.
+
+*(Actually, the comm layer assumes that transmit-complete is always the
+default completion level for all providers, and that is not necessarily
+true.  This should be fixed.)*
+
+Transmit-complete, for the reliable endpoints used by comm=ofi, means
+that the transaction has arrived at the peer and is no longer dependent
+on the fabric or local resources.  It does not say anything about the
+state of the transaction at the remote node.  In particular, it does not
+say that any of the intended effects of the transaction, such as memory
+updates, are visible.
+
+Delivery-complete extends this to say that effects are visible.  For
+messages this means that the message data has been placed in the user
+buffer at the target node.  For RMA it means that the receiving data
+location, on the target node for PUTs and non-fetching atomics and on
+the local node for GETs and fetching atomics, has been updated.
 
 For transactions that return data to the initiator, such as RMA GETs and
 fetching atomics, the default completion level is to treat the initiator
@@ -49,54 +58,91 @@ transmit-complete and the default completion mode are the same.
 Transaction ordering limits how the provider can reorder transactions
 between when they are initiated and when they are handled on the target
 node, but only on a specific initiating and target endpoint (or context)
-pair.  No ordering control is possible for transactions on different
-endpoint pairs.  How and where transaction ordering is useful to the
-comm layer depends on the tasking implementation and whether or not a
-task is using a "fixed" endpoint.  If the tasking implementation has a
-fixed number of threads and doesn't switch tasks across threads, and the
-comm layer can permanently bind a transmit endpoint/context to the
-task's thread, then transaction ordering affects all transactions done
-by a task on a given target node.  (For safety, when built for debug the
-comm layer can apply "trust but verify" to task switching, checking each
-time it yields that it does indeed come back on the same thread.)  If
-tasks can move from thread to thread, then libfabric transaction
-ordering can only affect the transactions done while the task is holding
-a specific transmit endpoint, during which it is not allowed to yield.
+pair.  Libfabric does not provide any way to control ordering for
+transactions on different endpoint pairs.
 
-The comm layer uses the libfabric messaging interface (SEND/RECV) for
+Whether and when transaction ordering is useful to the comm layer
+depends on the tasking implementation and whether or not a task is using
+a "fixed" endpoint.  If the tasking implementation has a fixed number of
+threads and doesn't switch tasks across threads, and the comm layer can
+permanently bind a transmit endpoint/context to the task's thread, then
+transaction ordering affects all transactions done throughout the life
+of a task, against a given target node.  (For safety, when built for
+debug the comm layer can "trust but verify" that there is no task
+switching, checking each time it yields that it does indeed come back on
+the same thread.)  If tasks can move from thread to thread, then
+libfabric transaction ordering can only affect the transactions done
+while the task is holding a specific transmit endpoint, during which it
+must not yield.
+
+The transaction ordering settings differentiate between transactions for
+messages, RMA, and native atomics.  The most important transaction
+ordering settings for Chapel's purposes are:
+- send-after-send (SAS) ordering, which specifies that messages (AMs)
+  must be transmitted in the order they are submitted relative to other
+  messages, and
+- read-after-write (RAW) ordering, which specifies that RMA read and
+  fetching native atomic operations must be transmitted in the order
+  they are submitted relative to RMA write and nonfetching native atomic
+  operations.
+
+##### "Dangling" Operations
+
+The compiler and module code do what is necessary for programs to
+conform to the MCM at the Chapel level.  This document discusses what
+the runtime comm layer does to avoid breaking that conformance despite
+using libfabric transactions whose effects may not be visible until
+after the runtime's last opportunity to directly interact with them.
+
+The comm layer always requests send-after-send transaction ordering, so
+that AMs are not reordered in transit.  Beyond that, it either requests
+the delivery-complete completion level or read-after-write transaction
+ordering.  This avoids of the ways that operations can end up incomplete
+even after libfabric says they are done, but not quite all.
+
+The comm layer uses the libfabric messaging (SEND/RECV) interface for
 Active Messages (AMs).  It defines a number of AM types, but there are
 only MCM implications for those that implement executeOn (on-statement
 bodies), RMA on unregistered remote addresses, and AMOs with providers
-that don't support native atomic operations.  AMs can either be
-nonblocking ("fire and forget") or blocking, where the initiator waits
-for the target to send back a "done" response.  (This is not a libfabric
-completion; it is an RMA PUT back to a flag variable on the initiator,
-done by the comm layer itself.)  Because they are synchronous, blocking
-AMs do not have MCM implications with respect to later transactions; all
-the effects of the AM are certainly visible by the time a blocking AM is
-done.  Of the AM types with MCM implications, only executeOn and AMO AMs
-can be nonblocking.  Furthermore, because nonblocking executeOn AMs are
-only used internally, it's really just AMO AMs whose ordering we need to
-be concerned about.
+that don't support native atomic operations.  AMs can either be blocking
+ones, where the initiator waits for the target to send back a "done"
+response before continuing, or nonblocking ones ("fire and forget").
+ALl the effects of a blocking AM are visible before a task continues
+after initiating one.  RMA AMs are always blocking.  AMs for Chapel
+on-statements are blocking, with a few exceptions for internal special
+cases.  AMs for fetching AMOs are blocking.  The only AMs where the
+initiator can continue despite that the result may not yet be visible
+are nonblocking ones for nonfetching AMOs.  This is true even with
+delivery-complete completions, because "delivery" just means that the AM
+request has been put in the AM request buffer at the target node, not
+that the AM handler has dealt with it.
 
-Currently the comm layer always sets send-after-send (`FI_ORDER_SAS`)
-ordering, with the result that all AMs from a task are sent and received
-in program order.  This is arguably overkill, since really we only need
-to make sure any sequence of AMO AMs is done in order and that the last
-of those is complete before any we initiate any following executeOn AM.
-That said, we don't have any evidence that send-after-send ordering is
-causing any significant performance degradation, especially beyond what
-would result from using any other technique for ensuring this aspect of
-MCM conformance.
-
-The comm layer uses the libfabric RMA interface (READ/WRITE/ATOMIC) for
+The comm layer uses the libfabric RMA (READ/WRITE/ATOMIC) interface for
 GETs, PUTs, and native AMOs.  (Note that even if the provider can
 support atomics natively, if the network cannot do so we typically won't
 use that capability because the provider won't advertise it.)  Various
 forms of read-after-write transaction ordering are always used for RMA
-MCM conformance, but there are also some ad-hoc techniques built on top
-of this for various specific needs, as detailed under the *Memory Order*
-clauses.
+MCM conformance.  Arguably this is overkill, however, because really we
+only need to ensure that reading the same address after writing to it
+produces the result that was written, but libfabric doesn't supply a way
+to say that directly.
+
+If we're not using delivery-complete then the comm layer may see the
+completions for regular PUTs before their effects are visible in target
+memory.  But even if we were using delivery-complete it might be nice to
+delay waiting for the completions for regular PUTs until such time as we
+know the results might be needed, such as before initiating an executeOn
+for an on-stmt to the target node(s).
+
+Summarizing, assuming send-after-send and read-after-write ordering,
+with transmit-complete, after we receive a completion event we still are
+not assured that the effect of a regular PUT or a nonfetching AMO done
+either natively or by AM is visible.  And even with delivery-complete,
+while we can be assured that the effect of a regular PUT is visible the
+effect of a nonfetching AMO nevertheless may not be.
+
+*I WAS HERE -- maybe rephrase above to say NF AMOs not done either way,
+and RMA PUTs not done unless delivery-complete.*
 
 ### Program Order
 
