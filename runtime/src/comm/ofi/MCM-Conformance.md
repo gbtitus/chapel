@@ -30,9 +30,9 @@ reach before callers are informed they are "done", in some sense.  The
 comm layer can use either the provider's default completion level, which
 is usually transmit-complete, or the delivery-complete level.
 
-*(Actually, the comm layer assumes that transmit-complete is always the
-default completion level for all providers, and that is not necessarily
-true.  This should be fixed.)*
+*Developer note: The comm layer actually assumes that transmit-complete
+is always the default completion level, not that it usually is.  This
+should be fixed.*
 
 Transmit-complete, for the reliable endpoints used by comm=ofi, means
 that the transaction has arrived at the peer and is no longer dependent
@@ -78,9 +78,11 @@ must not yield.
 The transaction ordering settings differentiate between transactions for
 messages, RMA, and native atomics.  The most important transaction
 ordering settings for Chapel's purposes are:
+
 - send-after-send (SAS) ordering, which specifies that messages (AMs)
   must be transmitted in the order they are submitted relative to other
   messages, and
+
 - read-after-write (RAW) ordering, which specifies that RMA read and
   fetching native atomic operations must be transmitted in the order
   they are submitted relative to RMA write and non-fetching native
@@ -97,28 +99,30 @@ after the runtime's last opportunity to directly interact with them.
 The comm layer always requests send-after-send transaction ordering, so
 that AMs are not reordered in transit.  Beyond that, it either requests
 the delivery-complete completion level or read-after-write transaction
-ordering.  This avoids of the ways that operations can end up incomplete
-even after libfabric says they are done, but not quite all.
+ordering.  This avoids many of the ways that operations can end up
+incomplete even after libfabric last interaction with them, but not
+all.
 
 The comm layer uses the libfabric messaging (SEND/RECV) interface for
 Active Messages (AMs).  It defines a number of AM types, but there are
 only MCM implications for those that implement executeOn (on-statement
-bodies), RMA on unregistered remote addresses, and AMOs with providers
-that don't support native atomic operations.  AMs can either be blocking
-ones, where the initiator waits for the target to send back a "done"
-response before continuing, or nonblocking ones ("fire and forget").
-All the effects of a blocking AM are visible before a task continues
-after initiating one.  RMA AMs are always blocking.  AMs for Chapel
-on-statements are blocking, with a few exceptions for internal special
-cases.  AMs for fetching AMOs are blocking.  The only AMs where the
-initiator can continue despite that the result may not yet be visible
-are nonblocking ones for non-fetching AMOs.  This is true even with
-delivery-complete completions, because "delivery" just means that the AM
-request has been put in the AM request buffer at the target node, not
-that the AM handler has dealt with it.
+bodies), RMA on unregistered remote addresses, and atomic operations
+when we're using a provider that can't do those natively.  AMs can
+either be blocking ones, where the initiator waits for the target to
+send back a "done" response before continuing, or nonblocking ones
+("fire and forget").  All the effects of a blocking AM are visible
+before a task continues after initiating one.  RMA AMs are always
+blocking.  AMs for Chapel on-statements are blocking, with a few
+exceptions for internal special cases.  AMs for fetching atomic
+operations are blocking.  The only AMs where the initiator can continue
+despite that the result may not yet be visible are nonblocking ones for
+non-fetching atomics.  This is true even with delivery-complete
+completions, because "delivery" just means that the AM request has been
+put in the AM request buffer at the target node, not that the AM handler
+there has dealt with it.
 
 The comm layer uses the libfabric RMA (READ/WRITE/ATOMIC) interface for
-GETs, PUTs, and native AMOs.  (Note that even if the provider can
+GETs, PUTs, and native atomics.  (Note that even if the provider can
 support atomics natively, if the network cannot do so we typically won't
 use that capability because the provider won't advertise it.)  Various
 forms of read-after-write transaction ordering are always used for RMA
@@ -129,17 +133,18 @@ to say that directly.
 
 If we're not using delivery-complete then the comm layer may see the
 completions for regular PUTs before their effects are visible in target
-memory.  But even if we were using delivery-complete it might be nice to
-delay waiting for the completions for regular PUTs until such time as we
-know the results might be needed, such as before initiating an executeOn
-for an on-stmt to the target node(s).
+memory.  But even with delivery-complete it might be nice to delay
+waiting for the completions for regular PUTs until such time as we know
+the results might be needed, such as before initiating an executeOn for
+an on-stmt to the target node(s).  This is work for the future, however.
 
 In summary, no matter what completion level we use, when the originator
-sees the libfabric completion from a non-fetching AMO (done either
-natively or by AM), the effect of that AMO on the target datum may not
-yet be visible.  Further, if we use the transmit-complete level, when
-the originator sees the libfabric completion from a regular PUT, the
-effect of that PUT may not yet be visible either.
+sees the libfabric completion from a non-fetching atomic operation (done
+either natively or by AM), the effect of that atomic on the target datum
+may not yet be visible.  Further, if we use the transmit-complete level,
+when the originator sees the libfabric completion from a regular PUT,
+the effect of that PUT may not yet be visible either.  These stores that
+are not yet visible are referred to as _dangling_.
 
 ##### Forcing Dangling Stores to Be Visible
 
@@ -147,7 +152,7 @@ Our use of send-after-send and read-after-write transaction orderings,
 along with the fact that the default completion for a transaction with
 load semantics (regular GET or fetching atomic) is delivery-complete,
 gives us the tools to force visibility when we need it.  To force
-regular PUTs or native non-fetching AMOs on a given endpoint to be
+regular PUTs or native non-fetching atomics on a given endpoint to be
 visible we can do a GET on the same endpoint.  When the completion of
 the GET is reported, all previous RMA and atomic effects must be
 visible.  Similarly, to force AM-mediated non-fetching atomic operations
@@ -157,44 +162,40 @@ handler on the target node has performed not only that no-op AM but
 also all AMs that were sent before it.
 
 There are four cases where MCM nonconformance requires us to deal with
-these dangling stores:
-- stores must be visible when later child tasks run,
-- stores done by a task must be visible before it ends,
-- earlier regular PUTs must be visible before later atomics, and
-- earlier atomics must be visible before later regular RMAs.
+dangling stores:
 
-- The effects of all prior stores done by a task must be visible before
-  any child task it creates starts running.
+1. The effects of all prior stores done by a task must be visible before
+   any child task it creates starts running.
 
-  For regular stores this is only an issue with transmit-complete.  We
-  currently achieve this by doing a regular GET after every PUT.  If
-  tasks are bound to transmit endpoints we could instead record which
-  remote nodes we've done PUTs to and wait to do the GETs until just
-  before the child task(s) is/are created.  We already have a hook for
-  this via the `chpl_rmem_consist_*()` functions, but the compiler
-  currently only adds calls to those only with remote caching enabled.
+   For regular stores this is only an issue with transmit-complete.  We
+   currently achieve this by doing a regular GET after every PUT.  If
+   tasks are bound to transmit endpoints we could instead record which
+   remote nodes we've done PUTs to and wait to do the GETs until just
+   before the child task(s) is/are created.  We already have a hook for
+   this via the `chpl_rmem_consist_*()` functions, but the compiler
+   currently only adds calls to those only with remote caching enabled.
 
-  For non-fetching atomic operations this is an issue independent of the
-  completion level, as discussed.  With unbound endpoints we handle this
-  by doing blocking AMs.  With bound endpoints we start out doing
-  blocking AMs, but then switch to nonblocking AMs and record the target
-  nodes.  We then do blocking no-op AMs to the affected nodes to force
-  visibility later, but this support is believed to be incomplete at
-  present.  In particular, while we force atomic visibility before
-  on-stmts, we don't force it before local task creations.  This would
-  benefit from support through `chpl_rmem_consist_*()`, similar to the
-  regular PUT case.
+   For non-fetching atomic operations this is an issue independent of
+   the completion level, as discussed.  With unbound endpoints we handle
+   this by doing blocking AMs.  With bound endpoints we start out doing
+   blocking AMs, but then switch to nonblocking AMs and record the
+   target nodes.  We then do blocking no-op AMs to the affected nodes to
+   force visibility later, but this support is believed to be incomplete
+   at present.  In particular, while we force atomic visibility before
+   on-stmts, we don't force it before local task creations.  This would
+   benefit from support through `chpl_rmem_consist_*()`, similar to the
+   regular PUT case.
 
-- The effects of all prior stores done by a task must be visible before
-  that task ends.
+2. The effects of all prior stores done by a task must be visible before
+   that task ends.
 
-- When a sequence of regular PUTs is followed by a non-fetching atomic
-  operation, the effects of all those PUTs must be visible before the
-  effect of the atomic operation is visible.
+3. When a sequence of regular PUTs is followed by a non-fetching atomic
+   operation, the effects of all those PUTs must be visible before the
+   effect of the atomic operation is visible.
 
-- When a non-fetching atomic operation is followed by a regular RMA, the
-  effect of the atomic operation must be visible before the RMA is
-  initiated.
+4. When a non-fetching atomic operation is followed by a regular RMA,
+   the effect of the atomic operation must be visible before the RMA is
+   initiated.
 
 ### Program Order
 
@@ -263,11 +264,11 @@ We could choose to do any remote atomic operation AMs as either blocking
 or non-blocking.  The latter are quicker but may require a following AM
 "fence" to guarantee visibility.  It turns out that they are enough
 quicker it's worth using them even if the task doesn't do very many
-non-fetching AMO AMs between task creations or before terminating.  And
-of course nearly all tasks do at least one atomic operation, for the
+non-fetching atomic AMs between task creations or before terminating.
+And of course nearly all tasks do at least one atomic operation, for the
 `_downEndCount()` when they end.  In the current implementation after
-each AM "fence" we do the next 3 non-fetching AMOs with blocking AMs and
-then switch to nonblocking ones after that.
+each AM "fence" we do the next 3 non-fetching atomics with blocking AMs
+and then switch to nonblocking ones after that.
 
 Note that there is one potential hole here.  We currently only do the AM
 "fence" described above before initiating `executeOn` AMs for
