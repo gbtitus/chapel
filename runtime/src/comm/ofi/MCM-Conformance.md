@@ -161,11 +161,11 @@ endpoint.  When the 'done' indicator comes back we know that the AM
 handler on the target node has performed not only that no-op AM but
 also all AMs that were sent before it.
 
-There are four cases where MCM nonconformance requires us to deal with
-dangling stores:
+There are four cases in which MCM conformance requires forcing dangling
+stores to be visible:
 
-1. The effects of all prior stores done by a task must be visible before
-   any child task it creates starts running.
+1. **The effects of all prior stores done by a task must be visible
+   before any child task it creates starts running.**
 
    For regular stores this is only an issue with transmit-complete.  We
    currently achieve this by doing a regular GET after every PUT.  If
@@ -186,16 +186,29 @@ dangling stores:
    benefit from support through `chpl_rmem_consist_*()`, similar to the
    regular PUT case.
 
-2. The effects of all prior stores done by a task must be visible before
-   that task ends.
+   The remaining three cases generraly have the same form.  The only
+   thing that differs among them is the point in comm layer processing
+   at which the visibility action needs to be taken.
 
-3. When a sequence of regular PUTs is followed by a non-fetching atomic
-   operation, the effects of all those PUTs must be visible before the
-   effect of the atomic operation is visible.
+2. **The effects of all prior stores done by a task must be visible
+   before that task ends.**
 
-4. When a non-fetching atomic operation is followed by a regular RMA,
+   The compiler inserts a call to `chpl_comm_task_end()` at the end of
+   every task, just before the task decrements its `endCount`.  This
+   case is handle there.
+
+3. **When a sequence of regular PUTs is followed by a non-fetching
+   atomic operation, the effects of all those PUTs must be visible
+   before the effect of the atomic operation is visible.**
+
+   This case is handled in the comm layer functions that initiate atomic
+   operations.
+
+4. **When a non-fetching atomic operation is followed by a regular RMA,
    the effect of the atomic operation must be visible before the RMA is
-   initiated.
+   initiated.**
+
+   This case is handled in the comm layer functions that initiate RMA.
 
 ### Program Order
 
