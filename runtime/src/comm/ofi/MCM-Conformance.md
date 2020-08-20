@@ -7,10 +7,13 @@ introduces some libfabric terms and concepts and then quotes the
 Model** chapter of the Chapel spec, adding text as needed to describe
 what the implementation does to meet the clauses in those sections.
 
-*Note*: the comm layer currently does not yet make a purposeful attempt
-to conform to the MCM with respect to atomic operations when those are
-implemented natively, using RMA.  It only does so when atomic operations
-are implemented using Active Messages (AMs).
+**_Note:_** the comm layer currently does not yet make a purposeful
+attempt to conform to the MCM with respect to atomic operations when
+those are implemented natively, using RMA.  It only does so when atomic
+operations are implemented using Active Messages (AMs).   There is code
+to handle the native case, but it has not yet been tested on a network
+that can actually do atomics natively (i.e., the sockets provider's
+support for "native" atomics over TCP/IP sockets doesn't count).
 
 ### Background
 
@@ -37,7 +40,7 @@ respect to other operations:
   refers not only to the libfabric message interface but also the RMA
   and atomics interfaces.
 
-##### Completion Levels
+#### Completion Levels
 
 Libfabric's completion level specifies what state an operation has to
 reach before an event is placed in the transmit endpoint's associated
@@ -45,9 +48,9 @@ completion queue to indicate that the operation is "done".  The comm
 layer can use either the provider's default completion level, which is
 usually *transmit-complete*, or the *delivery-complete* level.
 
-*Developer note: The comm layer assumes that the default completion
+**_Note:_** The comm layer assumes that the default completion
 level is always transmit-complete.  This is a bug which needs to be
-fixed, because a provider could certainly choose some other default.*
+fixed, because a provider could certainly choose some other default.
 
 Transmit-complete, for the reliable endpoints used by comm=ofi, means
 that the operation has arrived at the peer and is no longer dependent on
@@ -71,7 +74,7 @@ the received data has been placed in the local buffer.  Thus for RMA
 GETs and native fetching atomics, the default completion mode is really
 delivery-complete.
 
-##### Message Ordering
+#### Message Ordering
 
 Message ordering limits how operations can be reordered between when
 they are initiated and when they are handled on the target node.  It
@@ -108,7 +111,7 @@ transmit endpoint, during which it is not allowed to yield.
 I WAS HERE
 Next, see if I like the header sizes.
 
-##### Store Operations May "Dangle"
+#### Store Operations May "Dangle"
 
 The compiler and module code do what is necessary for programs to
 conform to the MCM at the Chapel level.  This document discusses what
@@ -166,7 +169,7 @@ when the originator sees the libfabric completion from a regular PUT,
 the effect of that PUT may not yet be visible either.  These stores that
 are not yet visible are referred to as _dangling_.
 
-##### Forcing Dangling Stores to Be Visible
+#### Forcing Dangling Stores to Be Visible
 
 Our use of send-after-send and read-after-write operation orderings,
 along with the fact that the default completion for a operation with
@@ -206,7 +209,7 @@ stores to be visible:
    benefit from support through `chpl_rmem_consist_*()`, similar to the
    regular PUT case.
 
-   The remaining three cases generraly have the same form.  The only
+   The remaining three cases generally have the same form.  The only
    thing that differs among them is the point in comm layer processing
    at which the visibility action needs to be taken.
 
