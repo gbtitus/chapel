@@ -196,7 +196,7 @@ may not yet be visible.  If we use the lighter weight transmit-complete
 level, when the originator sees the libfabric completion from a regular
 PUT, the effect of that PUT may not yet be visible either.  We have to
 take further steps to forces dangling stores to be visible.  These are
-documented below.
+described in the remainder of this document.
 
 ### Program Order
 
@@ -207,12 +207,8 @@ purposes of this section, the statements in the body of each Chapel task
 will be implemented in terms of *load*, *store*, and *atomic
 operations*.
 
----
-
 - If we have a program snippet without tasks, such as `X; Y;`, where
   _X_ and _Y_ are memory operations, then _X <<sub>p</sub> Y_.
-
----
 
 - The program `X; begin{Y}; Z;` implies _X <<sub>p</sub> Y_.  However,
   there is no particular relationship between _Y_ and _Z_ in program
@@ -229,12 +225,8 @@ operations*.
 
   ---
 
----
-
 - The program `t = begin{Y}; waitFor(t); Z;` implies _Y <<sub>p</sub>
   Z_.
-
----
 
 - _X <<sub>p</sub> Y_ and _Y <<sub>p</sub> Z_ imply _X <<sub>p</sub>
   Z_.
@@ -247,58 +239,58 @@ task respects program order as follows:
 - If _A<sub>sc</sub>(a) <<sub>p</sub> A<sub>sc</sub>(b)_ then
   _A<sub>sc</sub>(a) <<sub>m</sub> A<sub>sc</sub>(b)_
 
-#### Implementation Notes
+  #### Implementation Notes
 
-##### AM-Mediated Atomics
+  ##### AM-Mediated Atomics
 
-Tasks that do not have fixed transmit endpoints use blocking AMs for
-atomic operations, as do tasks with fixed transmit endpoints when they
-are doing fetching atomics.  Blocking AMs are complete in all respects
-before the initiator continues from them, and thus strictly ordered.
+  Tasks that do not have fixed transmit endpoints use blocking AMs for
+  atomic operations, as do tasks with fixed transmit endpoints when they
+  are doing fetching atomics.  Blocking AMs are complete in all respects
+  before the initiator continues from them, and thus strictly ordered.
 
-When tasks with fixed transmit endpoints do non-fetching atomics, the
-use of send-after-send (`FI_ORDER_SAS`) message ordering means that
-atomics targeting a given node are transmitted, received, and handled in
-order.  The current implementation starts out doing these using blocking
-AMs, but switches to non-blocking AMs after three non-fetching atomics
-in a row.  These may result in dangling stores, which then have to be
-forced into visibility using blocking no-op AMs if no other blocking AM
-occurs before an executeOn AM is initiated, the task terminates, or an
-RMA is requested.
+  When tasks with fixed transmit endpoints do non-fetching atomics, the
+  use of send-after-send (`FI_ORDER_SAS`) message ordering means that
+  atomics targeting a given node are transmitted, received, and handled
+  in order.  The current implementation starts out doing these using
+  blocking AMs, but switches to non-blocking AMs after three
+  non-fetching atomics in a row.  These may result in dangling stores,
+  which then have to be forced into visibility using blocking no-op AMs
+  if no other blocking AM occurs before an executeOn AM is initiated,
+  the task terminates, or an RMA is requested.
 
-**_Note (Bug 1):_** Currently if we have a sequence of non-fetching
-  atomic operations with nothing else intervening we simply initiate
-  them, one after another, without doing any synchronization.  With a
-  bound transmit endpoint our use of send-after-send message ordering
-  will maintain the required MCM ordering for those targeting the same
-  remote node, but the effects of two such atomics targeting different
-  nodes could become visible in either order.  To fix this, we need to
-  arrange for atomic operation effects to be visible before we proceed
-  with anything else.  This will actually simplify a number of other
-  things significantly.
+  **_Note (Bug 1):_** Currently if we have a sequence of non-fetching
+    atomic operations with nothing else intervening we simply initiate
+    them, one after another, without doing any synchronization.  With a
+    bound transmit endpoint our use of send-after-send message ordering
+    will maintain the required MCM ordering for those targeting the same
+    remote node, but the effects of two such atomics targeting different
+    nodes could become visible in either order.  To fix this, we need to
+    arrange for atomic operation effects to be visible before we proceed
+    with anything else.  This will actually simplify a number of other
+    things significantly.
 
-**_Note (Bug 2):_** Currently the implementation doesn't differentiate
-  between atomics to the same node or different nodes.  Send-after-send
-  message ordering only imposes order on AMs to a given node, because it
-  operates on a transmit/receive endpoint pair.  Fixing **_Bug 1_** will
-  render this problem moot.
+  **_Note (Bug 2):_** Currently the implementation doesn't differentiate
+    between atomics to the same node or different nodes.
+    Send-after-send message ordering only imposes order on AMs to a
+    given node, because it operates on a transmit/receive endpoint pair.
+    Fixing **_Bug 1_** will render this problem moot.
 
-**_Note (Bug 3):_** Currently we don't force outstanding non-fetching
-  atomics to be visible before we create a child task.  Fixing **_Bug
-  1_** will render this problem moot.
+  **_Note (Bug 3):_** Currently we don't force outstanding non-fetching
+    atomics to be visible before we create a child task.  Fixing **_Bug
+    1_** will render this problem moot.
 
-##### Native Atomics
+  ##### Native Atomics
 
-**_Note:_** Native atomic operations are not yet tested.
+  **_Note:_** Native atomic operations are not yet tested.
 
-Atomic operations implemented natively in libfabric are ordered either
-by using `FI_DELIVERY_COMPLETE` completion semantics, or through some
-form of message ordering.  But as in the case of AM-mediated atomics,
-this will not be sufficient to assure MCM conformance for non-fetching
-atomics, and we will need to take similar actions as we do there to
-ensure timely visibility.
+  Atomic operations implemented natively in libfabric are ordered either
+  by using `FI_DELIVERY_COMPLETE` completion semantics, or through some
+  form of message ordering.  But as in the case of AM-mediated atomics,
+  this will not be sufficient to assure MCM conformance for non-fetching
+  atomics, and we will need to take similar actions as we do there to
+  ensure timely visibility.
 
----
+  ---
 
 Every SC atomic operation gets its value from the last SC atomic
 operation before it to the same address in the total order
@@ -308,12 +300,12 @@ _<<sub>m</sub>_:
   (A<sub>sc</sub>'(a)|A<sub>sc</sub>'(a) <<sub>m</sub>
   A<sub>sc</sub>(a))_
 
-#### Implementation Notes
+  #### Implementation Notes
 
-The actions taken for the immediately preceding clause above are
-sufficient here also.  (The **_Bugs_** there apply here as well.)
+  The actions taken for the immediately preceding clause above are
+  sufficient here also.  (The **_Bugs_** there apply here as well.)
 
----
+  ---
 
 For data-race-free programs, every load gets its value from the last
 store before it to the same address in the total order _<<sub>m</sub>_:
@@ -321,38 +313,39 @@ store before it to the same address in the total order _<<sub>m</sub>_:
 - Value of _L(a)_ = Value of _max<sub><<sub>m</sub></sub> (S(a)|S(a)
   <<sub>m</sub> L(a)_ or _S(a) <<sub>p</sub> L(a))_
 
-#### Implementation Notes
+  #### Implementation Notes
 
-The requirement here is just that if an earlier regular store can
-dangle, it must be forced into visibility before the later regular load
-is initiated.  A store can only dangle if it is done natively (not via
-AM) in the absence of delivery-complete.
+  The requirement here is just that if an earlier regular store can
+  dangle, it must be forced into visibility before the later regular
+  load is initiated.  A store can only dangle if it is done natively
+  (not via AM) in the absence of delivery-complete.
 
-The comm layer could only fail this clause if a store dangled, and a
-subsequent load from the same address ended up reordered before it.  For
-tasks fixed to a transmit endpoint, our use of read-after-write message
-ordering means that later loads remain ordered after earlier stores.
+  The comm layer could only fail this clause if a store dangled, and a
+  subsequent load from the same address ended up reordered before it.
+  For tasks fixed to a transmit endpoint, our use of read-after-write
+  message ordering means that later loads remain ordered after earlier
+  stores.
 
-This leaves several cases outstanding: tasks not bound to transmit
-endpoints, stores in parent tasks followed by loads in subsequently
-created child tasks, stores in tasks followed by loads in tasks that
-waited for them to terminate, and stores followed by loads in
-on-statement bodies.  Currently we handle all but the last of these by
-the simple yet costly expedient of doing a same-node dummy RMA GET after
-every RMA PUT.  Stores followed by loads in on-statements are dealt with
-by asserting send-after-write message ordering.
+  This leaves several cases outstanding: tasks not bound to transmit
+  endpoints, stores in parent tasks followed by loads in subsequently
+  created child tasks, stores in tasks followed by loads in tasks that
+  waited for them to terminate, and stores followed by loads in
+  on-statement bodies.  Currently we handle all but the last of these by
+  the simple yet costly expedient of doing a same-node dummy RMA GET
+  after every RMA PUT.  Stores followed by loads in on-statements are
+  dealt with by asserting send-after-write message ordering.
 
-**_Note (improvements):_** For the case in which the store and load span
-  task creation or termination, with bound transmit endpoints we could
-  delay the dummy GETs, if they're needed at all, and do them in the
-  `chpl_rmem_consist_release()` or `chpl_comm_task_end()` function,
-  respectively.  But if we did this we would also need to do dummy GETs
-  before later atomics (see the clause below), and that might be costly.
-  Basically, if we delay dummy GETs for anything we have to delay them
-  for everything, because at the time we initiate the dangling PUT we
-  don't know what will come next.
+  **_Note (improvements):_** For the case in which the store and load
+    span task creation or termination, with bound transmit endpoints we
+    could delay the dummy GETs, if they're needed at all, and do them in
+    the `chpl_rmem_consist_release()` or `chpl_comm_task_end()`
+    function, respectively.  But if we did this we would also need to do
+    dummy GETs before later atomics (see the clause below), and that
+    might be costly.  Basically, if we delay dummy GETs for anything we
+    have to delay them for everything, because at the time we initiate
+    the dangling PUT we don't know what will come next.
 
----
+  ---
 
 For data-race-free programs, loads and stores are ordered with SC
 atomics.  That is, loads and stores for a given task are in total order
@@ -371,31 +364,32 @@ of loads and stores relative to SC atomic operations:
 - If _A<sub>sc</sub>(a) <<sub>p</sub> S(b)_ then _A<sub>sc</sub>(a)
   <<sub>m</sub> S(b)_
 
-#### Implementation Notes
+  #### Implementation Notes
 
-This clause is similar to the previous ones, but in terms of the
-implementation it has to do with visibility at the boundaries between
-regular memory references and atomic ones or vice-versa.  And like the
-others, it is dangling stores that we have to be concerned with.
+  These clauses are similar to the previous ones, but in terms of the
+  implementation they have to do with visibility at the boundaries
+  between regular memory references and atomic ones or vice-versa.  As
+  int the others, it is dangling stores that we have to be concerned
+  with.
 
-If a regular stores can dangle they must be forced into visibility
-before any later atomic is initiated.  As described previously, the
-current implementation achieves this by doing a dummy regular GET
-immediately after every regular PUT.
+  If a regular stores can dangle they must be forced into visibility
+  before any later atomic is initiated.  As described previously, the
+  current implementation achieves this by doing a dummy regular GET
+  immediately after every regular PUT.
 
-It's actually unclear if this can be improved upon.  Functionally, we
-could certainly delay doing the dummy GET until right before the
-following atomic operation was initiated, but effectively the atomic's
-latency would then include that of the GET.  This might be a net loss in
-terms of total time, compared to initiating the dummy GET while the PUT
-was in flight.
+  It's actually unclear if this can be improved upon.  Functionally, we
+  could certainly delay doing the dummy GET until right before the
+  following atomic operation was initiated, but effectively the atomic's
+  latency would then include that of the GET.  This might be a net loss
+  in terms of total time, compared to initiating the dummy GET while the
+  PUT was in flight.
 
-Conversely, if an atomic store can dangle it must be forced into
-visibility before any later RMA is initiated.  The current
-implementation does this using blocking no-op AMs to all nodes that
-might have dangling atomic stores before initiating the RMA.
+  Conversely, if an atomic store can dangle it must be forced into
+  visibility before any later RMA is initiated.  The current
+  implementation does this using blocking no-op AMs to all nodes that
+  might have dangling atomic stores before initiating the RMA.
 
----
+  ---
 
 For data-race-free programs, loads and stores preserve sequential
 program behavior.  That is, loads and stores to the same address in a
@@ -408,8 +402,9 @@ which preserve sequential program behavior:
 
 - If _S(a) <<sub>p</sub> S'(a)_ then _S(a) <<sub>m</sub> S'(a)_
 
-#### Implementation Notes
+  #### Implementation Notes
 
-This imposes the same requirements on the implementation, and has the
-same solution(s), as clause before last, above.
+  These impose the same requirements on the implementation, and have the
+  same solution(s), as the previous clause about same-address
+  references, above.
 
