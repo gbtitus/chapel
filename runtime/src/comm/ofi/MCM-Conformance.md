@@ -227,6 +227,8 @@ operations*.
   which is currently called at that point, among others, but only when
   remote caching is enabled.  This could be enabled for comm=ofi also
 
+  ---
+
 ---
 
 - The program `t = begin{Y}; waitFor(t); Z;` implies _Y <<sub>p</sub>
