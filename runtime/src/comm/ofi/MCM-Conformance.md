@@ -16,12 +16,12 @@ Chapel spec, adding text as needed to describe what the implementation
 does to meet the clauses in those sections.
 
 **_Note:_** the comm layer currently does not yet intentionally try to
-conform to the MCM with respect to atomic operations when those are
-implemented natively, using RMA.  It only does so when atomic operations
-are implemented using Active Messages (AMs).  There is code to handle
-the native case, but it has not yet been tested on a network that can
-actually do atomics natively.  (So for example, the sockets provider's
-support for "native" atomics over TCP/IP sockets doesn't count).
+  conform to the MCM with respect to atomic operations when those are
+  implemented natively, using RMA.  It only does so when they are
+  implemented using Active Messages (AMs).  There is code to handle the
+  native case, but it has not yet been tested on a network that can
+  actually do atomics natively.  (So for example, the sockets provider's
+  support for "native" atomics over TCP/IP sockets doesn't count).
 
 ### Background
 
@@ -56,9 +56,9 @@ completion queue to indicate that the operation is "done".  The comm
 layer can use either the provider's default completion level, which is
 usually *transmit-complete*, or the *delivery-complete* level.
 
-**_Note:_** The comm layer assumes that the default completion
-level is always transmit-complete.  This is a bug which needs to be
-fixed, because a provider could certainly choose some other default.
+**_Note (Bug):_** The comm layer assumes that the default completion
+  level is always transmit-complete.  This is a bug which needs to be
+  fixed, because a provider could certainly choose some other default.
 
 Transmit-complete, for the reliable endpoints used by comm=ofi, means
 that the operation has arrived at the peer and is no longer dependent on
@@ -190,76 +190,6 @@ when the originator sees the libfabric completion from a regular PUT,
 the effect of that PUT may not yet be visible either.  We have to take
 further steps to forces these dangling stores to be visible.
 
-
-
-
-I WAS HERE
-
-
-#### Forcing Dangling Stores to Be Visible
-
-Our use of send-after-send and read-after-write message orderings,
-along with the fact that the default completion for a operation with
-load semantics (regular GET or fetching atomic) is delivery-complete,
-gives us the tools to force visibility when we need it.  To force
-regular PUTs or native non-fetching atomics on a given endpoint to be
-visible we can do a GET on the same endpoint.  When the completion of
-the GET is reported, all previous RMA and atomic effects must be
-visible.  Similarly, to force AM-mediated non-fetching atomic operations
-on an endpoint to be visible we can do a blocking no-op AM to the same
-endpoint.  When the 'done' indicator comes back we know that the AM
-handler on the target node has performed not only that no-op AM but
-also all AMs that were sent before it.
-
-There are four cases in which MCM conformance requires forcing dangling
-stores to be visible:
-
-1. **The effects of all prior stores done by a task must be visible
-   before any child task it creates starts running.**
-
-   For regular stores this is only an issue with transmit-complete.  We
-   currently achieve this by doing a regular GET after every PUT.  If
-   tasks are bound to transmit endpoints we could instead record which
-   target nodes we've done PUTs to and wait to do the GETs until just
-   before the child task(s) is/are created.  We already have a hook for
-   this via the `chpl_rmem_consist_*()` functions, but the compiler
-   currently only adds calls to those only with remote caching enabled.
-
-   For non-fetching atomic operations this is an issue independent of
-   the completion level, as discussed.  With unbound endpoints we handle
-   this by doing blocking AMs.  With bound endpoints we start out doing
-   blocking AMs, but then switch to nonblocking AMs and record the
-   target nodes.  We then do blocking no-op AMs to the affected nodes to
-   force visibility later, but this support is believed to be incomplete
-   at present.  In particular, while we force atomic visibility before
-   executeOn AMs for on-statements, we don't force it before local task
-   creations.  This would benefit from support through
-   `chpl_rmem_consist_*()`, similar to the regular PUT case.
-
-   The remaining three cases generally have the same form.  The only
-   thing that differs among them is the point in comm layer processing
-   at which the visibility action needs to be taken.
-
-2. **The effects of all prior stores done by a task must be visible
-   before that task ends.**
-
-   The compiler inserts a call to `chpl_comm_task_end()` at the end of
-   every task, just before the task decrements its `endCount`.  This
-   case is handle there.
-
-3. **When a sequence of regular PUTs is followed by a non-fetching
-   atomic operation, the effects of all those PUTs must be visible
-   before the effect of the atomic operation is visible.**
-
-   This case is handled in the comm layer functions that initiate atomic
-   operations.
-
-4. **When a non-fetching atomic operation is followed by a regular RMA,
-   the effect of the atomic operation must be visible before the RMA is
-   initiated.**
-
-   This case is handled in the comm layer functions that initiate RMA.
-
 ### Program Order
 
 Task creation and task waiting create a conceptual tree of program
@@ -269,15 +199,32 @@ purposes of this section, the statements in the body of each Chapel task
 will be implemented in terms of *load*, *store*, and *atomic
 operations*.
 
+---
+
 - If we have a program snippet without tasks, such as `X; Y;`, where
   _X_ and _Y_ are memory operations, then _X <<sub>p</sub> Y_.
+
+---
 
 - The program `X; begin{Y}; Z;` implies _X <<sub>p</sub> Y_.  However,
   there is no particular relationship between _Y_ and _Z_ in program
   order.
 
+#### Implementation Notes
+
+Currently the comm layer doesn't do anything when parent tasks create
+children, although if it had the opportunity to do so it could be
+beneficial to delay some actions until that point.  The runtime memory
+consistency interface contains a `chpl_rmem_consist_release()` function
+which is currently called at that point, among others, but only when
+remote caching is enabled.  This could be enabled for comm=ofi also
+
+---
+
 - The program `t = begin{Y}; waitFor(t); Z;` implies _Y <<sub>p</sub>
   Z_.
+
+---
 
 - _X <<sub>p</sub> Y_ and _Y <<sub>p</sub> Z_ imply _X <<sub>p</sub>
   Z_.
@@ -290,7 +237,7 @@ task respects program order as follows:
 - If _A<sub>sc</sub>(a) <<sub>p</sub> A<sub>sc</sub>(b)_ then
   _A<sub>sc</sub>(a) <<sub>m</sub> A<sub>sc</sub>(b)_
 
-#### Implementation
+#### Implementation Notes
 
 ##### AM-Mediated Atomics
 
@@ -309,7 +256,7 @@ forced into visibility using blocking no-op AMs if no other blocking AM
 occurs before an executeOn AM is initiated, the task terminates, or an
 RMA is requested.
 
-**_Note (BUG 1):_** Currently if we have a sequence of nonfetching
+**_Note (Bug 1):_** Currently if we have a sequence of non-fetching
   atomic operations with nothing else intervening we simply initiate
   them, one after another, without doing any synchronization.  With a
   bound transmit endpoint our use of send-after-send message ordering
@@ -320,14 +267,14 @@ RMA is requested.
   with anything else.  This will actually simplify a number of other
   things significantly.
 
-**_Note (BUG 2):_** Currently the implementation doesn't differentiate
+**_Note (Bug 2):_** Currently the implementation doesn't differentiate
   between atomics to the same node or different nodes.  Send-after-send
   message ordering only imposes order on AMs to a given node, because it
-  operates on a transmit/receive endpoint pair.  Solving **_BUG 1_**
-  will render this problem moot.
+  operates on a transmit/receive endpoint pair.  Fixing **_Bug 1_** will
+  render this problem moot.
 
-**_Note (BUG 3):_** Currently we don't force outstanding non-fetching
-  atomics to be visible before we create a child task.  Fixing **_BUG
+**_Note (Bug 3):_** Currently we don't force outstanding non-fetching
+  atomics to be visible before we create a child task.  Fixing **_Bug
   1_** will render this problem moot.
 
 ##### Native Atomics
@@ -351,11 +298,10 @@ _<<sub>m</sub>_:
   (A<sub>sc</sub>'(a)|A<sub>sc</sub>'(a) <<sub>m</sub>
   A<sub>sc</sub>(a))_
 
-#### Implementation
+#### Implementation Notes
 
 The actions taken for the immediately preceding clause above are
-sufficient here also.  (The **_Note (BUG)_** there applies here as
-well.)
+sufficient here also.  (The **_Bugs_** there apply here as well.)
 
 ---
 
@@ -365,7 +311,7 @@ store before it to the same address in the total order _<<sub>m</sub>_:
 - Value of _L(a)_ = Value of _max<sub><<sub>m</sub></sub> (S(a)|S(a)
   <<sub>m</sub> L(a)_ or _S(a) <<sub>p</sub> L(a))_
 
-#### Implementation
+#### Implementation Notes
 
 The requirement here is just that if an earlier regular store can
 dangle, it must be forced into visibility before the later regular load
@@ -387,14 +333,14 @@ every RMA PUT.  Stores followed by loads in on-statements are dealt with
 by asserting send-after-write message ordering.
 
 **_Note (improvements):_** For the case in which the store and load span
-task creation or termination, with bound transmit endpoints we could
-delay the dummy GETs, if they're needed at all, and do them in the
-`chpl_rmem_consist_release()` or `chpl_comm_task_end()` function,
-respectively.  But if we did this we would also need to do dummy GETs
-before later atomics (see the clause below), and that might be costly.
-Basically, if we delay dummy GETs for anything we have to delay them for
-everything, because at the time we initiate the danling PUT we don't
-know what will come next.
+  task creation or termination, with bound transmit endpoints we could
+  delay the dummy GETs, if they're needed at all, and do them in the
+  `chpl_rmem_consist_release()` or `chpl_comm_task_end()` function,
+  respectively.  But if we did this we would also need to do dummy GETs
+  before later atomics (see the clause below), and that might be costly.
+  Basically, if we delay dummy GETs for anything we have to delay them
+  for everything, because at the time we initiate the dangling PUT we
+  don't know what will come next.
 
 ---
 
@@ -415,9 +361,7 @@ of loads and stores relative to SC atomic operations:
 - If _A<sub>sc</sub>(a) <<sub>p</sub> S(b)_ then _A<sub>sc</sub>(a)
   <<sub>m</sub> S(b)_
 
-#### Implementation
-
-***Content needed here.***
+#### Implementation Notes
 
 This clause is similar to the previous ones, but in terms of the
 implementation it has to do with visibility at the boundaries between
@@ -454,7 +398,7 @@ which preserve sequential program behavior:
 
 - If _S(a) <<sub>p</sub> S'(a)_ then _S(a) <<sub>m</sub> S'(a)_
 
-#### Implementation
+#### Implementation Notes
 
 This imposes the same requirements on the implementation, and has the
 same solution(s), as clause before last, above.
