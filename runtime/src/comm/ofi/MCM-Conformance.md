@@ -218,12 +218,11 @@ operations*.
 
   Currently the comm layer doesn't do anything when parent tasks create
   children, although if it had the opportunity to do so it could be
-  beneficial to delay some actions until that point.  The runtime memory
-  consistency interface contains a `chpl_rmem_consist_release()` function
-  which is currently called at that point, among others, but only when
-  remote caching is enabled.  This could be enabled for comm=ofi also
-
-  ---
+  beneficial to delay some actions until then.  The runtime memory
+  consistency interface contains a `chpl_rmem_consist_release()`
+  function which is currently called just before child creation, among
+  other times, but only when remote caching is enabled.  This could be
+  enabled for comm=ofi in general, however.
 
 - The program `t = begin{Y}; waitFor(t); Z;` implies _Y <<sub>p</sub>
   Z_.
@@ -264,10 +263,10 @@ task respects program order as follows:
     bound transmit endpoint our use of send-after-send message ordering
     will maintain the required MCM ordering for those targeting the same
     remote node, but the effects of two such atomics targeting different
-    nodes could become visible in either order.  To fix this, we need to
-    arrange for atomic operation effects to be visible before we proceed
-    with anything else.  This will actually simplify a number of other
-    things significantly.
+    nodes could become visible in either order.  This violates the MCM.
+    To fix it, we need to arrange for atomic operation effects to be
+    visible before we proceed with anything else.  As it turns out, this
+    will actually simplify a number of other things significantly.
 
   **_Note (Bug 2):_** Currently the implementation doesn't differentiate
     between atomics to the same node or different nodes.
@@ -290,7 +289,7 @@ task respects program order as follows:
   atomics, and we will need to take similar actions as we do there to
   ensure timely visibility.
 
-  ---
+---
 
 Every SC atomic operation gets its value from the last SC atomic
 operation before it to the same address in the total order
@@ -305,7 +304,7 @@ _<<sub>m</sub>_:
   The actions taken for the immediately preceding clause above are
   sufficient here also.  (The **_Bugs_** there apply here as well.)
 
-  ---
+---
 
 For data-race-free programs, every load gets its value from the last
 store before it to the same address in the total order _<<sub>m</sub>_:
@@ -318,24 +317,20 @@ store before it to the same address in the total order _<<sub>m</sub>_:
   The requirement here is just that if an earlier regular store can
   dangle, it must be forced into visibility before the later regular
   load is initiated.  A store can only dangle if it is done natively
-  (not via AM) in the absence of delivery-complete.
+  (not via AM) in the absence of delivery-complete.  For tasks fixed to
+  a transmit endpoint, the use of read-after-write message ordering
+  means that later loads remain ordered after earlier stores.
 
-  The comm layer could only fail this clause if a store dangled, and a
-  subsequent load from the same address ended up reordered before it.
-  For tasks fixed to a transmit endpoint, our use of read-after-write
-  message ordering means that later loads remain ordered after earlier
-  stores.
-
-  This leaves several cases outstanding: tasks not bound to transmit
-  endpoints, stores in parent tasks followed by loads in subsequently
-  created child tasks, stores in tasks followed by loads in tasks that
-  waited for them to terminate, and stores followed by loads in
-  on-statement bodies.  Currently we handle all but the last of these by
-  the simple yet costly expedient of doing a same-node dummy RMA GET
+  This nevertheless leaves several cases outstanding: tasks not bound to
+  transmit endpoints, stores in parent tasks followed by loads in
+  subsequently created child tasks, stores in tasks followed by loads in
+  tasks that waited for them to terminate, and stores followed by loads
+  in on-statement bodies.  Currently we handle all but the last of these
+  by the simple yet costly expedient of doing a same-node dummy RMA GET
   after every RMA PUT.  Stores followed by loads in on-statements are
   dealt with by asserting send-after-write message ordering.
 
-  **_Note (improvements):_** For the case in which the store and load
+  **_Note (improvement):_** For the case in which the store and load
     span task creation or termination, with bound transmit endpoints we
     could delay the dummy GETs, if they're needed at all, and do them in
     the `chpl_rmem_consist_release()` or `chpl_comm_task_end()`
@@ -345,7 +340,13 @@ store before it to the same address in the total order _<<sub>m</sub>_:
     have to delay them for everything, because at the time we initiate
     the dangling PUT we don't know what will come next.
 
-  ---
+  **_Note (improvement):_** Currently if we use a dummy GET to ensure
+    visibility, we wait for its completion before continuing.  We could
+    instead initiate the dummy GET, remember we've done so, and go on.
+    Then later, at the point where the visibility guarantee is needed,
+    we could wait for its completion.
+
+---
 
 For data-race-free programs, loads and stores are ordered with SC
 atomics.  That is, loads and stores for a given task are in total order
@@ -382,14 +383,15 @@ of loads and stores relative to SC atomic operations:
   following atomic operation was initiated, but effectively the atomic's
   latency would then include that of the GET.  This might be a net loss
   in terms of total time, compared to initiating the dummy GET while the
-  PUT was in flight.
+  PUT was still in flight.  (This is especially true if we can delay
+  waiting for the dummy GET's completion, as described above.)
 
   Conversely, if an atomic store can dangle it must be forced into
   visibility before any later RMA is initiated.  The current
   implementation does this using blocking no-op AMs to all nodes that
   might have dangling atomic stores before initiating the RMA.
 
-  ---
+---
 
 For data-race-free programs, loads and stores preserve sequential
 program behavior.  That is, loads and stores to the same address in a
