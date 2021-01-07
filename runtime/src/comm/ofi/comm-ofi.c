@@ -1006,6 +1006,10 @@ chpl_bool getCfgHint(const char* evName, struct cfgHint hintVals[],
     }
   }
 
+  DBG_PRINTF_NODE0(DBG_PROV_HINTS,
+                   "CHPL_RT_%s sets hintval %#" PRIx64,
+                   evName, *pval);
+
   return true;
 }
 
@@ -1019,7 +1023,6 @@ void debugOverrideHints(struct fi_info* hints) {
 
   {
     struct cfgHint hintVals[] = { CFG_HINT(FI_ATOMIC),
-                                  CFG_HINT(FI_ATOMIC),
                                   CFG_HINT(FI_DIRECTED_RECV),
                                   CFG_HINT(FI_FENCE),
                                   CFG_HINT(FI_HMEM),
