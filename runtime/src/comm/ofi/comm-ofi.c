@@ -4790,6 +4790,11 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
         bufArg = &dummy;
       }
     }
+    DBG_PRINTF(DBG_AMO,
+               "fi_fetch_atomic(%p, %s, %d, %p, %p, %p, -, %p, %#" PRIx64 ", %s, %s, %p)",
+               tcip->txCtx, DBG_VAL(bufArg, ofiType), 1, mrDescOpnd1,
+               myRes, mrDescRes, object, mrKey,
+               amo_typeName(ofiType), amo_opName(ofiOp), ctx);
     OFI_CHK(fi_fetch_atomic(tcip->txCtx,
                             bufArg, 1, mrDescOpnd1, myRes, mrDescRes,
                             rxRmaAddr(tcip, node), object, mrKey,
