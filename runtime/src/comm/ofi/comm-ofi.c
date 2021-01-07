@@ -4790,7 +4790,7 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
         bufArg = &dummy;
       }
     }
-    DBG_PRINTF(DBG_AMO,
+    DBG_PRINTF((ofiOp == FI_ATOMIC_READ) ? DBG_AMO_READ : DBG_AMO,
                "fi_fetch_atomic(%p, %s, %d, %p, %p, %p, -, %#" PRIx64
                ", %#" PRIx64 ", %s, %s, %p)",
                tcip->txCtx, DBG_VAL(bufArg, ofiType), 1, mrDescOpnd1,
@@ -5458,7 +5458,7 @@ int computeAtomicValid(enum fi_datatype ofiType) {
             && my_fetch_valid(ofiType, FI_ATOMIC_WRITE)
             && my_compare_valid(ofiType, FI_CSWAP));
   }
-
+v
   //
   // For real types, only sum, read, write, and cswap matter.
   //
@@ -6255,8 +6255,8 @@ const char* amo_typeName(enum fi_datatype ofiType) {
   case FI_UINT32: return "uint32";
   case FI_INT64: return "int64";
   case FI_UINT64: return "uint64";
-  case FI_FLOAT: return "_real32";
-  case FI_DOUBLE: return "_real64";
+  case FI_FLOAT: return "real32";
+  case FI_DOUBLE: return "real64";
   default: return "amoType???";
   }
 }
