@@ -4783,7 +4783,7 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
                               ofiType, ofiOp, ctx));
   } else if (result != NULL) {
     void* bufArg = myOpnd1;
-    if (provCtl_readAmoNeedsOpnd) {
+    if (provCtl_readAmoNeedsOpnd || true) {
       // Workaround for RxD bug.
       if (ofiOp == FI_ATOMIC_READ && bufArg == NULL) {
         static int64_t dummy;
