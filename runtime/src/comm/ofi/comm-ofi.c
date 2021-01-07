@@ -5458,7 +5458,7 @@ int computeAtomicValid(enum fi_datatype ofiType) {
             && my_fetch_valid(ofiType, FI_ATOMIC_WRITE)
             && my_compare_valid(ofiType, FI_CSWAP));
   }
-v
+
   //
   // For real types, only sum, read, write, and cswap matter.
   //
