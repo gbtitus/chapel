@@ -1006,9 +1006,11 @@ chpl_bool getCfgHint(const char* evName, struct cfgHint hintVals[],
     }
   }
 
+#if 0
   DBG_PRINTF_NODE0(DBG_PROV_HINTS,
                    "CHPL_RT_%s sets hintval %#" PRIx64,
                    evName, *pVal);
+#endif
 
   return true;
 }
