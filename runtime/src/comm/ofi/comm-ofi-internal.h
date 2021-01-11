@@ -76,6 +76,7 @@ extern "C" {
   m(TCIPS,                  "tx context alloc/free")                    \
   m(OOB,                    "out-of-band calls")                        \
   m(BARRIER,                "barriers")                                 \
+  m(SPECIAL,                "special")                                  \
   m(TSTAMP,                 "timestamp output")
 
 //

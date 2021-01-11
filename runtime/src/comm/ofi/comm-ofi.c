@@ -4774,6 +4774,12 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
              amo_opName(ofiOp), amo_typeName(ofiType), size, ctx);
 
   if (ofiOp == FI_CSWAP) {
+    DBG_PRINTF(DBG_SPECIAL,
+               "fi_compare_atomic(-, <%s>, -, -, <%s>, -, %p, -, %d, "
+               "%#" PRIx64 ", -, %s, %s, -)",
+               DBG_VAL(myOpnd2, ofiType), DBG_VAL(myOpnd1, ofiType),
+               myRes, (int) node, object,
+               amo_typeName(ofiType), amo_opName(ofiOp));
     OFI_CHK(fi_compare_atomic(tcip->txCtx,
                               myOpnd2, 1, mrDescOpnd2, myOpnd1, mrDescOpnd1,
                               myRes, mrDescRes,
@@ -4821,6 +4827,11 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
                "  AMO result: %p is %s",
                result,
                DBG_VAL(result,  ofiType));
+    if (ofiOp == FI_CSWAP) {
+      DBG_PRINTF(DBG_SPECIAL,
+                 "  AMO result: %p sz %zd is %s",
+                 result, size, DBG_VAL(result,  ofiType));
+    }
   }
 
   if (myOpnd1 != operand1) {
