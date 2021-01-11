@@ -5284,6 +5284,12 @@ DEFN_CHPL_COMM_ATOMIC_XCHG(real64, FI_DOUBLE, _real64)
     doAMO(node, object, &old_expected, desired, &old_value,             \
           FI_CSWAP, ofiType, sizeof(Type));                             \
     *result = (chpl_bool32)(old_value == old_expected);                 \
+    DBG_PRINTF(DBG_SPECIAL,                                             \
+               "%s() oxpct %p <%s>, oval %p <%s>, *result %d",          \
+               __func__,                                                \
+               &old_expected, DBG_VAL(&old_expected, ofiType),          \
+               &old_value, DBG_VAL(&old_value, ofiType),                \
+               (int) *result);                                          \
     if (!*result) memcpy(expected, &old_value, sizeof(Type));           \
   }
 
