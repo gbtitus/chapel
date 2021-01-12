@@ -5276,6 +5276,14 @@ DEFN_CHPL_COMM_ATOMIC_XCHG(real64, FI_DOUBLE, _real64)
                "%s(%p, %p, %d, %p, %p, %d, %s)", __func__,              \
                expected, desired, (int) node, object, result,           \
                ln, chpl_lookupFilename(fn));                            \
+    DBG_PRINTF(DBG_SPECIAL,                                             \
+               "%s(exp %p <%s>, des %p <%s>, %d, obj %p <%s>)",         \
+               __func__,                                                \
+               expected, DBG_VAL(&expected, ofiType),                   \
+               desired, DBG_VAL(&desired, ofiType),                     \
+               (int) node,                                              \
+               object,                                                  \
+               (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-"); \
     chpl_comm_diags_verbose_amo("amo cmpxchg", node, ln, fn);           \
     chpl_comm_diags_incr(amo);                                          \
     Type old_value;                                                     \
@@ -5285,11 +5293,11 @@ DEFN_CHPL_COMM_ATOMIC_XCHG(real64, FI_DOUBLE, _real64)
           FI_CSWAP, ofiType, sizeof(Type));                             \
     *result = (chpl_bool32)(old_value == old_expected);                 \
     DBG_PRINTF(DBG_SPECIAL,                                             \
-               "%s() oxpct %p <%s>, oval %p <%s>, *result %d",          \
-               __func__,                                                \
-               &old_expected, DBG_VAL(&old_expected, ofiType),          \
-               &old_value, DBG_VAL(&old_value, ofiType),                \
-               (int) *result);                                          \
+               "    obj <%s>, old_exp <%s>, old_val <%s>, res %c",      \
+               (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-",  \
+               DBG_VAL(&old_expected, ofiType),                         \
+               DBG_VAL(&old_value, ofiType),                            \
+               (*result) ? 'T' : 'F');                                  \
     if (!*result) memcpy(expected, &old_value, sizeof(Type));           \
   }
 
