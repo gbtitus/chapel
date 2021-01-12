@@ -5282,23 +5282,24 @@ DEFN_CHPL_COMM_ATOMIC_XCHG(real64, FI_DOUBLE, _real64)
                "%s(%p, %p, %d, %p, %p, %d, %s)", __func__,              \
                expected, desired, (int) node, object, result,           \
                ln, chpl_lookupFilename(fn));                            \
-    DBG_PRINTF(DBG_SPECIAL,                                             \
-               "%s(exp %p <%s>, des %p <%s>, %d, obj %p <%s>, res %p)", \
-               __func__,                                                \
-               expected, DBG_VAL(expected, ofiType),                    \
-               desired, DBG_VAL(desired, ofiType),                      \
-               (int) node,                                              \
-               object,                                                  \
-               (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-",  \
-               result);                                                 \
     CHK_TRUE(ofiType != FI_INT32                                        \
              || *(int32_t*) expected != 10000                           \
              || *(int32_t*) desired != 10001);                          \
     chpl_comm_diags_verbose_amo("amo cmpxchg", node, ln, fn);           \
     chpl_comm_diags_incr(amo);                                          \
     Type old_value;                                                     \
+    memset(&old_value, ~0, sizeof(old_value));                          \
     Type old_expected;                                                  \
     memcpy(&old_expected, expected, sizeof(Type));                      \
+    DBG_PRINTF(DBG_SPECIAL,                                             \
+               "%s(): old_exp %p <%s>, des %p <%s>, obj %d:%p <%s>, "   \
+               "old_val %p <%s>",                                       \
+               __func__,                                                \
+               &old_expected, DBG_VAL(&old_expected, ofiType),          \
+               desired, DBG_VAL(desired, ofiType),                      \
+               (int) node, object,                                      \
+               (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-",  \
+               &old_value, DBG_VAL(&old_value, ofiType));               \
     doAMO(node, object, &old_expected, desired, &old_value,             \
           FI_CSWAP, ofiType, sizeof(Type));                             \
     *result = (chpl_bool32)(old_value == old_expected);                 \
@@ -5555,6 +5556,11 @@ void doAMO(c_nodeid_t node, void* object,
     // The type is supported for network atomics and the object address
     // is remotely accessible.  Do the AMO natively.
     //
+    if (node == chpl_nodeID && ofiOp == FI_CSWAP) {
+      DBG_PRINTF(DBG_SPECIAL,
+                 "  %s(obj %p <%s>)",
+                 __func__, object, DBG_VAL(object, ofiType));
+    }
     ofi_amo(node, mrRaddr, mrKey, operand1, operand2, result,
             ofiOp, ofiType, size);
   }
