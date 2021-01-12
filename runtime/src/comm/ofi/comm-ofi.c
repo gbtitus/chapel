@@ -5279,8 +5279,8 @@ DEFN_CHPL_COMM_ATOMIC_XCHG(real64, FI_DOUBLE, _real64)
     DBG_PRINTF(DBG_SPECIAL,                                             \
                "%s(exp %p <%s>, des %p <%s>, %d, obj %p <%s>)",         \
                __func__,                                                \
-               expected, DBG_VAL(&expected, ofiType),                   \
-               desired, DBG_VAL(&desired, ofiType),                     \
+               expected, DBG_VAL(expected, ofiType),                    \
+               desired, DBG_VAL(desired, ofiType),                      \
                (int) node,                                              \
                object,                                                  \
                (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-"); \
