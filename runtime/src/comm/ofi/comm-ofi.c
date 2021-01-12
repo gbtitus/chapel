@@ -5284,6 +5284,9 @@ DEFN_CHPL_COMM_ATOMIC_XCHG(real64, FI_DOUBLE, _real64)
                (int) node,                                              \
                object,                                                  \
                (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-"); \
+    CHK_TRUE(ofiType != FI_INT32                                        \
+             || *(int32_t*) expected != 10000                           \
+             || *(int32_t*) desired != 10001);                          \
     chpl_comm_diags_verbose_amo("amo cmpxchg", node, ln, fn);           \
     chpl_comm_diags_incr(amo);                                          \
     Type old_value;                                                     \
