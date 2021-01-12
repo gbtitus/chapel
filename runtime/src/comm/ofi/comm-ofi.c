@@ -4775,7 +4775,7 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
 
   if (ofiOp == FI_CSWAP) {
     DBG_PRINTF(DBG_SPECIAL,
-               "fi_compare_atomic(-, <%s>, -, -, <%s>, -, %p, -, %d, "
+               "  fi_compare_atomic(-, <%s>, -, -, <%s>, -, %p, -, %d, "
                "%#" PRIx64 ", -, %s, %s, -)",
                DBG_VAL(myOpnd2, ofiType), DBG_VAL(myOpnd1, ofiType),
                myRes, (int) node, object,
@@ -4815,6 +4815,11 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
   atomic_destroy_bool(&txnDone);
   tciFree(tcip);
 
+  if (ofiOp == FI_CSWAP) {
+    DBG_PRINTF(DBG_SPECIAL,
+               "  myRes %p <%s>", myRes, DBG_VAL(myRes,  ofiType));
+  }
+
   if (result != NULL) {
     if (myRes != result) {
       memcpy(result, myRes, size);
@@ -4827,11 +4832,11 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
                "  AMO result: %p is %s",
                result,
                DBG_VAL(result,  ofiType));
-    if (ofiOp == FI_CSWAP) {
-      DBG_PRINTF(DBG_SPECIAL,
-                 "  AMO result: %p sz %zd is %s",
-                 result, size, DBG_VAL(result,  ofiType));
-    }
+  }
+
+  if (ofiOp == FI_CSWAP) {
+    DBG_PRINTF(DBG_SPECIAL,
+               "  result %p <%s>", result, DBG_VAL(result,  ofiType));
   }
 
   if (myOpnd1 != operand1) {
@@ -5296,7 +5301,7 @@ DEFN_CHPL_COMM_ATOMIC_XCHG(real64, FI_DOUBLE, _real64)
           FI_CSWAP, ofiType, sizeof(Type));                             \
     *result = (chpl_bool32)(old_value == old_expected);                 \
     DBG_PRINTF(DBG_SPECIAL,                                             \
-               "    obj <%s>, old_exp <%s>, old_val <%s>, res %c",      \
+               "  obj <%s>, old_exp <%s>, old_val <%s>, res %c",      \
                (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-",  \
                DBG_VAL(&old_expected, ofiType),                         \
                DBG_VAL(&old_value, ofiType),                            \
