@@ -4776,9 +4776,10 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
   if (ofiOp == FI_CSWAP) {
     DBG_PRINTF(DBG_SPECIAL,
                "  fi_compare_atomic(-, <%s>, -, -, <%s>, -, %p, -, %d, "
-               "%#" PRIx64 ", -, %s, %s, -)",
+               "%#" PRIx64 " <%s>, -, %s, %s, -)",
                DBG_VAL(myOpnd2, ofiType), DBG_VAL(myOpnd1, ofiType),
                myRes, (int) node, object,
+               (node == chpl_nodeID) ? DBG_VAL((void*) object, ofiType) : "-",
                amo_typeName(ofiType), amo_opName(ofiOp));
     OFI_CHK(fi_compare_atomic(tcip->txCtx,
                               myOpnd2, 1, mrDescOpnd2, myOpnd1, mrDescOpnd1,
