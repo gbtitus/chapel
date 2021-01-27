@@ -4721,7 +4721,7 @@ void do_remote_get_buff(void* addr, c_nodeid_t node, void* raddr,
 
 
 static
-chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
+chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, void* oobj, uint64_t object, uint64_t mrKey,
                               const void* operand1, const void* operand2,
                               void* result,
                               enum fi_op ofiOp, enum fi_datatype ofiType,
@@ -4775,17 +4775,26 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
 
   if (ofiOp == FI_CSWAP) {
     DBG_PRINTF(DBG_SPECIAL,
-               "  fi_compare_atomic(buf %p <%s>, compare %p <%s>, "
-               "result %p <%s>, node %d, addr %p, %s, %s)",
+               "%d:  fi_compare_atomic(buf %p:%s, cmp %p:%s, "
+               "myRes %p:%s, obj %d:%p:%s, %s, %s)",
+               (int) __LINE__,
                myOpnd2, DBG_VAL(myOpnd2, ofiType),
                myOpnd1, DBG_VAL(myOpnd1, ofiType),
                myRes, DBG_VAL(myRes, ofiType), (int) node, (void*) object,
+               (node == chpl_nodeID) ? DBG_VAL(oobj, ofiType) : "-",
                amo_typeName(ofiType), amo_opName(ofiOp));
+    chpl_atomic_thread_fence(memory_order_release);
     OFI_CHK(fi_compare_atomic(tcip->txCtx,
                               myOpnd2, 1, mrDescOpnd2, myOpnd1, mrDescOpnd1,
                               myRes, mrDescRes,
                               rxRmaAddr(tcip, node), object, mrKey,
                               ofiType, ofiOp, ctx));
+    DBG_PRINTF(DBG_SPECIAL,
+               "%d:  obj %d:%p:%s, myRes %p:%s",
+               (int) __LINE__,
+               (int) node, (void*) object,
+               (node == chpl_nodeID) ? DBG_VAL(oobj, ofiType) : "-",
+               myRes, DBG_VAL(myRes, ofiType));
   } else if (result != NULL) {
     void* bufArg = myOpnd1;
     // Workaround for bug wherein operand1 is unused but nevertheless
@@ -4812,14 +4821,26 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
   //
   // Wait for network completion.
   //
-  waitForTxnComplete(tcip, ctx);
-  atomic_destroy_bool(&txnDone);
-  tciFree(tcip);
-
   if (ofiOp == FI_CSWAP) {
     DBG_PRINTF(DBG_SPECIAL,
-               "  myRes %p <%s>", myRes, DBG_VAL(myRes,  ofiType));
+               "%d:  obj %d:%p:%s, myRes %p:%s",
+               (int) __LINE__,
+               (int) node, (void*) object,
+               (node == chpl_nodeID) ? DBG_VAL(oobj, ofiType) : "-",
+               myRes, DBG_VAL(myRes, ofiType));
   }
+  waitForTxnComplete(tcip, ctx);
+  chpl_atomic_thread_fence(memory_order_release);
+  if (ofiOp == FI_CSWAP) {
+    DBG_PRINTF(DBG_SPECIAL,
+               "%d:  obj %d:%p:%s, myRes %p:%s",
+               (int) __LINE__,
+               (int) node, (void*) object,
+               (node == chpl_nodeID) ? DBG_VAL(oobj, ofiType) : "-",
+               myRes, DBG_VAL(myRes, ofiType));
+  }
+  atomic_destroy_bool(&txnDone);
+  tciFree(tcip);
 
   if (result != NULL) {
     if (myRes != result) {
@@ -4837,7 +4858,11 @@ chpl_comm_nb_handle_t ofi_amo(c_nodeid_t node, uint64_t object, uint64_t mrKey,
 
   if (ofiOp == FI_CSWAP) {
     DBG_PRINTF(DBG_SPECIAL,
-               "  result %p <%s>", result, DBG_VAL(result,  ofiType));
+               "%d:  obj %d:%p:%s, res %p:%s",
+               (int) __LINE__,
+               (int) node, (void*) object,
+               (node == chpl_nodeID) ? DBG_VAL(oobj, ofiType) : "-",
+               result, DBG_VAL(result, ofiType));
   }
 
   if (myOpnd1 != operand1) {
@@ -5283,8 +5308,8 @@ DEFN_CHPL_COMM_ATOMIC_XCHG(real64, FI_DOUBLE, _real64)
                expected, desired, (int) node, object, result,           \
                ln, chpl_lookupFilename(fn));                            \
     CHK_TRUE(ofiType != FI_INT32                                        \
-             || *(int32_t*) expected != 10000                           \
-             || *(int32_t*) desired != 10001);                          \
+             || *(int32_t*) expected != 10                              \
+             || *(int32_t*) desired != 11);                             \
     chpl_comm_diags_verbose_amo("amo cmpxchg", node, ln, fn);           \
     chpl_comm_diags_incr(amo);                                          \
     Type old_value;                                                     \
@@ -5292,23 +5317,24 @@ DEFN_CHPL_COMM_ATOMIC_XCHG(real64, FI_DOUBLE, _real64)
     Type old_expected;                                                  \
     memcpy(&old_expected, expected, sizeof(Type));                      \
     DBG_PRINTF(DBG_SPECIAL,                                             \
-               "%s(): old_exp %p <%s>, des %p <%s>, obj %d:%p <%s>, "   \
-               "old_val %p <%s>",                                       \
-               __func__,                                                \
+               "%d: call doAMO(obj %d:%p:%s, oexp %p:%s, des %p:%s, "   \
+               "oval %p:%s)",                                           \
+               (int) __LINE__, (int) node, object,                      \
+               (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-",  \
                &old_expected, DBG_VAL(&old_expected, ofiType),          \
                desired, DBG_VAL(desired, ofiType),                      \
-               (int) node, object,                                      \
-               (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-",  \
                &old_value, DBG_VAL(&old_value, ofiType));               \
     doAMO(node, object, &old_expected, desired, &old_value,             \
           FI_CSWAP, ofiType, sizeof(Type));                             \
     *result = (chpl_bool32)(old_value == old_expected);                 \
     DBG_PRINTF(DBG_SPECIAL,                                             \
-               "  obj <%s>, old_exp %p <%s>, old_val %p <%s>, res %c",  \
+               "%d:  res %c, obj %d:%p:%s, oexp %p:%s, oval %p:%s",     \
+               (int) __LINE__,                                          \
+               (*result) ? 'T' : 'F',                                   \
+               node, object,                                            \
                (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-",  \
                &old_expected, DBG_VAL(&old_expected, ofiType),          \
-               &old_value, DBG_VAL(&old_value, ofiType),                \
-               (*result) ? 'T' : 'F');                                  \
+               &old_value, DBG_VAL(&old_value, ofiType));               \
     if (!*result) memcpy(expected, &old_value, sizeof(Type));           \
   }
 
@@ -5542,6 +5568,11 @@ void doAMO(c_nodeid_t node, void* object,
     // We can't do the AMO on the network, so do it on the CPU.  If the
     // object is on this node do it directly; otherwise, use an AM.
     //
+    if (ofiOp == FI_CSWAP) {
+      DBG_PRINTF(DBG_SPECIAL,
+                 "%d:  %s(): FI_CSWAP via AM!",
+                 (int) __LINE__, __func__);
+    }
     if (node == chpl_nodeID) {
       if (ofiOp != FI_ATOMIC_READ) {
         waitForPutsVisAllNodes(NULL, NULL, false /*taskIsEnding*/);
@@ -5558,19 +5589,19 @@ void doAMO(c_nodeid_t node, void* object,
     //
     if (ofiOp == FI_CSWAP) {
       DBG_PRINTF(DBG_SPECIAL,
-                 "  %s() before: obj %p <%s>, res %p <%s>)",
-                 __func__,
-                 object,
+                 "%d:  %s() before: obj %d:%p:%s, res %p:%s",
+                 (int) __LINE__, __func__,
+                 node, object,
                  (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-",
                  result, DBG_VAL(result, ofiType));
     }
-    ofi_amo(node, mrRaddr, mrKey, operand1, operand2, result,
+    ofi_amo(node, object, mrRaddr, mrKey, operand1, operand2, result,
             ofiOp, ofiType, size);
     if (ofiOp == FI_CSWAP) {
       DBG_PRINTF(DBG_SPECIAL,
-                 "  %s() after: obj %p <%s>, res %p <%s>)",
-                 __func__,
-                 object,
+                 "%d:  %s() after: obj %d:%p:%s, res %p:%s",
+                 (int) __LINE__, __func__,
+                 node, object,
                  (node == chpl_nodeID) ? DBG_VAL(object, ofiType) : "-",
                  result, DBG_VAL(result, ofiType));
     }
@@ -5799,7 +5830,7 @@ void do_remote_amo_nf_buff(void* opnd1, c_nodeid_t node,
 
   amo_nf_buff_task_info_t* info = task_local_buff_acquire(amo_nf_buff, 0);
   if (info == NULL) {
-    ofi_amo(node, mrRaddr, mrKey, opnd1, NULL, NULL, ofiOp, ofiType, size);
+    ofi_amo(node, object, mrRaddr, mrKey, opnd1, NULL, NULL, ofiOp, ofiType, size);
     return;
   }
 
