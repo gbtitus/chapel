@@ -1210,13 +1210,13 @@ chpl_bool findProvider(struct fi_info** p_infoOut,
           != NULL)) {
     DBG_PRINTF_NODE0(DBG_PROV,
                      "** found %sdesirable provider with %s",
-                     inputIsHints ? "less-" : "", feature);
+                     inputIsHints ? "" : "less-", feature);
     return true;
   }
 
   DBG_PRINTF_NODE0(DBG_PROV,
                    "** no %sdesirable provider with %s",
-                   inputIsHints ? "less-" : "", feature);
+                   inputIsHints ? "" : "less-", feature);
   *p_infoOut = info;
   return false;
 }
@@ -1448,14 +1448,11 @@ void init_ofiFabricDomain(void) {
     int i;
     for (i = 0; !haveProvider && i < capTryLen; i++) {
       haveProvider = (*capTry[i].fn)(&capTry[i].info, hints, true);
+      ofi_info = capTry[i].info;
     }
 
-    if (haveProvider) {
-      ofi_info = capTry[i].info;
-    } else {
-      for (i = 0; !haveProvider && i < capTryLen; i++) {
-        haveProvider = (*capTry[i].fn)(&ofi_info, capTry[i].info, false);
-      }
+    for (i = 0; !haveProvider && i < capTryLen; i++) {
+      haveProvider = (*capTry[i].fn)(&ofi_info, capTry[i].info, false);
     }
 
     for (i = 0; i < capTryLen && capTry[i].info != NULL; i++) {
