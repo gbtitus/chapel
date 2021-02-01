@@ -1185,50 +1185,47 @@ struct fi_info* findProvInList(struct fi_info* info,
 
 
 static
-chpl_bool findProvider(struct fi_info** p_infoOut,
-                       struct fi_info* infoIn,
-                       chpl_bool inputIsHints,
-                       chpl_bool skip_RxD_provs,
-                       chpl_bool skip_RxM_provs,
-                       const char* feature) {
-  struct fi_info* info;
+struct fi_info* findProvider(struct fi_info** p_infoList,
+                             struct fi_info* hints,
+                             chpl_bool skip_RxD_provs,
+                             chpl_bool skip_RxM_provs,
+                             const char* feature) {
   chpl_bool skip_ungood_provs;
 
-  if (inputIsHints) {
+  if (hints != NULL) {
     int ret;
-    OFI_CHK_2(fi_getinfo(COMM_OFI_FI_VERSION, NULL, NULL, 0, infoIn, &info),
+    OFI_CHK_2(fi_getinfo(COMM_OFI_FI_VERSION, NULL, NULL, 0, hints,
+                         p_infoList),
               ret, -FI_ENODATA);
     skip_ungood_provs = (getProviderName() == NULL);
   } else {
-    info = infoIn;
     skip_ungood_provs = false;
   }
 
-  if (info != NULL
-      && ((*p_infoOut = findProvInList(info, skip_ungood_provs,
-                                       skip_RxD_provs, skip_RxM_provs))
+  struct fi_info* infoFound = NULL;
+  if (*p_infoList != NULL
+      && ((infoFound = findProvInList(*p_infoList, skip_ungood_provs,
+                                      skip_RxD_provs, skip_RxM_provs))
           != NULL)) {
     DBG_PRINTF_NODE0(DBG_PROV,
                      "** found %sdesirable provider with %s",
-                     inputIsHints ? "" : "less-", feature);
-    return true;
+                     (hints != NULL) ? "" : "less-", feature);
+  } else {
+    DBG_PRINTF_NODE0(DBG_PROV,
+                     "** no %sdesirable provider with %s",
+                     (hints != NULL) ? "" : "less-", feature);
   }
 
-  DBG_PRINTF_NODE0(DBG_PROV,
-                   "** no %sdesirable provider with %s",
-                   inputIsHints ? "" : "less-", feature);
-  *p_infoOut = info;
-  return false;
+  return infoFound;
 }
 
 
 static
-chpl_bool findDlvrCmpltProv(struct fi_info** p_infoOut,
-                            struct fi_info* infoIn,
-                            chpl_bool inputIsHints) {
+struct fi_info* findDlvrCmpltProv(struct fi_info** p_infoList,
+                                  struct fi_info* hints) {
   //
   // We're looking for a provider that supports FI_DELIVERY_COMPLETE.
-  // If the input provider list infoIn is empty, then we don't have
+  // If the input provider list hints is empty, then we don't have
   // any candidates yet.  In that case we're asked to get a provider
   // list using the given hints, modified appropriately, and from that
   // select the first "good" (or forced) provider, which is assumed to
@@ -1238,33 +1235,32 @@ chpl_bool findDlvrCmpltProv(struct fi_info** p_infoOut,
   const char* prov_name = getProviderName();
   const chpl_bool forced_RxD = isInProvName("ofi_rxd", prov_name);
   const chpl_bool forced_RxM = isInProvName("ofi_rxm", prov_name);
-  chpl_bool ret;
+  struct fi_info* infoFound;
 
-  if (inputIsHints) {
-    uint64_t op_flags_orig = infoIn->tx_attr->op_flags;
-    ret = findProvider(p_infoOut, infoIn, inputIsHints,
-                       !forced_RxD /*skip_RxD_provs*/,
-                       !forced_RxM /*skip_RxM_provs*/,
-                       "delivery-complete");
-    infoIn->tx_attr->op_flags = op_flags_orig;
+  if (hints != NULL) {
+    uint64_t op_flags_orig = hints->tx_attr->op_flags;
+    infoFound = findProvider(p_infoList, hints,
+                             !forced_RxD /*skip_RxD_provs*/,
+                             !forced_RxM /*skip_RxM_provs*/,
+                             "delivery-complete");
+    hints->tx_attr->op_flags = op_flags_orig;
   } else {
-    ret = findProvider(p_infoOut, infoIn, inputIsHints,
-                       !forced_RxD /*skip_RxD_provs*/,
-                       !forced_RxM /*skip_RxM_provs*/,
-                       "delivery-complete");
+    infoFound = findProvider(p_infoList, hints,
+                             !forced_RxD /*skip_RxD_provs*/,
+                             !forced_RxM /*skip_RxM_provs*/,
+                             "delivery-complete");
   }
 
-  return ret;
+  return infoFound;
 }
 
 
 static
-chpl_bool findMsgOrderProv(struct fi_info** p_infoOut,
-                           struct fi_info* infoIn,
-                           chpl_bool inputIsHints) {
+struct fi_info* findMsgOrderProv(struct fi_info** p_infoList,
+                                 struct fi_info* hints) {
   //
   // We're looking for a provider that supports FI_DELIVERY_COMPLETE.
-  // If the input provider list infoIn is empty, then we don't have
+  // If the input provider list hints is empty, then we don't have
   // any candidates yet.  In that case we're asked to get a provider
   // list using the given hints, modified appropriately, and from that
   // select the first "good" (or forced) provider, which is assumed to
@@ -1273,27 +1269,27 @@ chpl_bool findMsgOrderProv(struct fi_info** p_infoOut,
   //
   const char* prov_name = getProviderName();
   const chpl_bool forced_RxD = isInProvName("ofi_rxd", prov_name);
-  chpl_bool ret;
+  struct fi_info* infoFound;
 
-  if (inputIsHints) {
-    uint64_t tx_msg_order_orig = infoIn->tx_attr->msg_order;
-    infoIn->tx_attr->msg_order |= FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
-    uint64_t rx_msg_order_orig = infoIn->rx_attr->msg_order;
-    infoIn->rx_attr->msg_order |= FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
-    ret = findProvider(p_infoOut, infoIn, inputIsHints,
-                       !forced_RxD /*skip_RxD_provs*/,
-                       !isInProvName("ofi_rxm", prov_name) /*skip_RxM_provs*/,
-                       "delivery-complete");
-    infoIn->tx_attr->msg_order = tx_msg_order_orig;
-    infoIn->rx_attr->msg_order = rx_msg_order_orig;
+  if (hints != NULL) {
+    uint64_t tx_msg_order_orig = hints->tx_attr->msg_order;
+    hints->tx_attr->msg_order |= FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
+    uint64_t rx_msg_order_orig = hints->rx_attr->msg_order;
+    hints->rx_attr->msg_order |= FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
+    infoFound = findProvider(p_infoList, hints,
+                             !forced_RxD /*skip_RxD_provs*/,
+                             !isInProvName("ofi_rxm", prov_name) /*skip_RxM_provs*/,
+                             "delivery-complete");
+    hints->tx_attr->msg_order = tx_msg_order_orig;
+    hints->rx_attr->msg_order = rx_msg_order_orig;
   } else {
-    ret = findProvider(p_infoOut, infoIn, inputIsHints,
-                       !forced_RxD /*skip_RxD_provs*/,
-                       false /*skip_RxM_provs*/,
-                       "delivery-complete");
+    infoFound = findProvider(p_infoList, hints,
+                             !forced_RxD /*skip_RxD_provs*/,
+                             false /*skip_RxM_provs*/,
+                             "delivery-complete");
   }
 
-  return ret;
+  return infoFound;
 }
 
 
@@ -1410,8 +1406,6 @@ void init_ofiFabricDomain(void) {
   // Otherwise, just flow those overrides into the selection process
   // below.
   //
-  chpl_bool haveProvider = false;
-
   if (ord_cmplt_forced) {
     OFI_CHK_2(fi_getinfo(COMM_OFI_FI_VERSION, NULL, NULL, 0, hints, &ofi_info),
               ret, -FI_ENODATA);
@@ -1419,7 +1413,6 @@ void init_ofiFabricDomain(void) {
       INTERNAL_ERROR_V_NODE0("No (forced) provider for prov_name \"%s\"",
                              (prov_name == NULL) ? "<any>" : prov_name);
     }
-    haveProvider = true;
   }
 
   //
@@ -1427,10 +1420,10 @@ void init_ofiFabricDomain(void) {
   // message ordering first, then delivery-complete, but allow those to
   // be swapped via the environment.
   //
-  if (!haveProvider) {
+  if (ofi_info == NULL) {
     struct {
-      chpl_bool (*fn)(struct fi_info**, struct fi_info*, chpl_bool);
-      struct fi_info* info;
+      struct fi_info* (*fn)(struct fi_info**, struct fi_info*);
+      struct fi_info* infoList;
     } capTry[2] = { 0 };
     size_t capTryLen = sizeof(capTry) / sizeof(capTry[0]);
 
@@ -1445,22 +1438,23 @@ void init_ofiFabricDomain(void) {
       capTry[1].fn = findDlvrCmpltProv;
     }
 
-    int i;
-    for (i = 0; !haveProvider && i < capTryLen; i++) {
-      haveProvider = (*capTry[i].fn)(&capTry[i].info, hints, true);
-      ofi_info = capTry[i].info;
+    // Search for a good provider.
+    for (int i = 0; ofi_info == NULL && i < capTryLen; i++) {
+      ofi_info = (*capTry[i].fn)(&capTry[i].infoList, hints);
     }
 
-    for (i = 0; !haveProvider && i < capTryLen; i++) {
-      haveProvider = (*capTry[i].fn)(&ofi_info, capTry[i].info, false);
+    // If necessary, search for a less-good provider.
+    for (int i = 0; ofi_info == NULL && i < capTryLen; i++) {
+      ofi_info = (*capTry[i].fn)(&capTry[i].infoList, NULL);
     }
 
-    for (i = 0; i < capTryLen && capTry[i].info != NULL; i++) {
-      fi_freeinfo(capTry[i].info);
+    // ofi_info has the result; free intermediate list(s).
+    for (int i = 0; i < capTryLen && capTry[i].infoList != NULL; i++) {
+      fi_freeinfo(capTry[i].infoList);
     }
   }
 
-  if (!haveProvider) {
+  if (ofi_info == NULL) {
     //
     // We didn't find any provider at all.
     // NOTE: execution ends here.
