@@ -1185,32 +1185,120 @@ struct fi_info* findProvInList(struct fi_info* info,
 
 
 static
+chpl_bool findProvider(struct fi_info** p_infoOut,
+                       struct fi_info* infoIn,
+                       chpl_bool inputIsHints,
+                       chpl_bool skip_RxD_provs,
+                       chpl_bool skip_RxM_provs,
+                       const char* feature) {
+  struct fi_info* info;
+  chpl_bool skip_ungood_provs;
+
+  if (inputIsHints) {
+    int ret;
+    OFI_CHK_2(fi_getinfo(COMM_OFI_FI_VERSION, NULL, NULL, 0, infoIn, &info),
+              ret, -FI_ENODATA);
+    skip_ungood_provs = (getProviderName() == NULL);
+  } else {
+    info = infoIn;
+    skip_ungood_provs = false;
+  }
+
+  if (info != NULL
+      && ((*p_infoOut = findProvInList(info, skip_ungood_provs,
+                                       skip_RxD_provs, skip_RxM_provs))
+          != NULL)) {
+    DBG_PRINTF_NODE0(DBG_PROV,
+                     "** found %sdesirable provider with %s",
+                     inputIsHints ? "less-" : "", feature);
+    return true;
+  }
+
+  DBG_PRINTF_NODE0(DBG_PROV,
+                   "** no %sdesirable provider with %s",
+                   inputIsHints ? "less-" : "", feature);
+  *p_infoOut = info;
+  return false;
+}
+
+
+static
+chpl_bool findDlvrCmpltProv(struct fi_info** p_infoOut,
+                            struct fi_info* infoIn,
+                            chpl_bool inputIsHints) {
+  //
+  // We're looking for a provider that supports FI_DELIVERY_COMPLETE.
+  // If the input provider list infoIn is empty, then we don't have
+  // any candidates yet.  In that case we're asked to get a provider
+  // list using the given hints, modified appropriately, and from that
+  // select the first "good" (or forced) provider, which is assumed to
+  // be the best-performing one.  Otherwise, we're just asked to find
+  // the best less-good provider from the given list.
+  //
+  const char* prov_name = getProviderName();
+  const chpl_bool forced_RxD = isInProvName("ofi_rxd", prov_name);
+  const chpl_bool forced_RxM = isInProvName("ofi_rxm", prov_name);
+  chpl_bool ret;
+
+  if (inputIsHints) {
+    uint64_t op_flags_orig = infoIn->tx_attr->op_flags;
+    ret = findProvider(p_infoOut, infoIn, inputIsHints,
+                       !forced_RxD /*skip_RxD_provs*/,
+                       !forced_RxM /*skip_RxM_provs*/,
+                       "delivery-complete");
+    infoIn->tx_attr->op_flags = op_flags_orig;
+  } else {
+    ret = findProvider(p_infoOut, infoIn, inputIsHints,
+                       !forced_RxD /*skip_RxD_provs*/,
+                       !forced_RxM /*skip_RxM_provs*/,
+                       "delivery-complete");
+  }
+
+  return ret;
+}
+
+
+static
+chpl_bool findMsgOrderProv(struct fi_info** p_infoOut,
+                           struct fi_info* infoIn,
+                           chpl_bool inputIsHints) {
+  //
+  // We're looking for a provider that supports FI_DELIVERY_COMPLETE.
+  // If the input provider list infoIn is empty, then we don't have
+  // any candidates yet.  In that case we're asked to get a provider
+  // list using the given hints, modified appropriately, and from that
+  // select the first "good" (or forced) provider, which is assumed to
+  // be the best-performing one.  Otherwise, we're just asked to find
+  // the best less-good provider from the given list.
+  //
+  const char* prov_name = getProviderName();
+  const chpl_bool forced_RxD = isInProvName("ofi_rxd", prov_name);
+  chpl_bool ret;
+
+  if (inputIsHints) {
+    uint64_t tx_msg_order_orig = infoIn->tx_attr->msg_order;
+    infoIn->tx_attr->msg_order |= FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
+    uint64_t rx_msg_order_orig = infoIn->rx_attr->msg_order;
+    infoIn->rx_attr->msg_order |= FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
+    ret = findProvider(p_infoOut, infoIn, inputIsHints,
+                       !forced_RxD /*skip_RxD_provs*/,
+                       !isInProvName("ofi_rxm", prov_name) /*skip_RxM_provs*/,
+                       "delivery-complete");
+    infoIn->tx_attr->msg_order = tx_msg_order_orig;
+    infoIn->rx_attr->msg_order = rx_msg_order_orig;
+  } else {
+    ret = findProvider(p_infoOut, infoIn, inputIsHints,
+                       !forced_RxD /*skip_RxD_provs*/,
+                       false /*skip_RxM_provs*/,
+                       "delivery-complete");
+  }
+
+  return ret;
+}
+
+
+static
 void init_ofiFabricDomain(void) {
-  //
-  // Just within this function, it's useful during setup to be able to
-  // produce error messages only from node 0, for problems we expect
-  // all nodes to encounter identically.
-  //
-#  define INTERNAL_ERROR_V_NODE0(fmt, ...)                              \
-    do {                                                                \
-      if (chpl_nodeID == 0) {                                           \
-        INTERNAL_ERROR_V(fmt, ## __VA_ARGS__);                          \
-      } else {                                                          \
-        chpl_comm_ofi_oob_fini();                                       \
-        chpl_exit_any(0);                                               \
-      }                                                                 \
-    } while (0)
-
-  //
-  // It's also useful to be able to print debug info only from node 0.
-  //
-#  define DBG_PRINTF_NODE0(mask, fmt, ...)                              \
-    do {                                                                \
-      if (chpl_nodeID == 0) {                                           \
-        DBG_PRINTF(mask, fmt, ## __VA_ARGS__);                          \
-      }                                                                 \
-    } while (0)
-
   //
   // Build hints describing our fundamental requirements and get a list
   // of the providers that can satisfy those:
@@ -1230,9 +1318,6 @@ void init_ofiFabricDomain(void) {
   // - in addition, include the memory registration modes we can support
   //
   const char* prov_name = getProviderName();
-  const chpl_bool forced_RxD = isInProvName("ofi_rxd", prov_name);
-  const chpl_bool forced_RxM = isInProvName("ofi_rxm", prov_name);
-
   struct fi_info* hints;
   CHK_TRUE((hints = fi_allocinfo()) != NULL);
 
@@ -1299,10 +1384,10 @@ void init_ofiFabricDomain(void) {
   // by any of the returned providers.  Providers will not typically
   // "volunteer" capabilities that aren't asked for, especially if those
   // capabilities have performance costs.  So here, first see if we get
-  // a "good" core provider when we hint the transaction orderings, and
-  // iff that fails see if we get a "good" core provider when we hint
-  // delivery-complete.  "Good" here means "not tcp or sockets".  There
-  // are some wrinkles:
+  // a "good" core provider when we hint at message ordering and then
+  // (if needed) delivery-complete.  Then, if that doesn't succeed, we
+  // settle for a not-so-good provider.  "Good" here means "neither tcp
+  // nor sockets".  There are some wrinkles:
   // - Setting either the transaction orderings or the delivery types in
   //   manually overridden hints causes those hints to be used as-is,
   //   turning off both the good-provider check and any attempt to find
@@ -1325,6 +1410,8 @@ void init_ofiFabricDomain(void) {
   // Otherwise, just flow those overrides into the selection process
   // below.
   //
+  chpl_bool haveProvider = false;
+
   if (ord_cmplt_forced) {
     OFI_CHK_2(fi_getinfo(COMM_OFI_FI_VERSION, NULL, NULL, 0, hints, &ofi_info),
               ret, -FI_ENODATA);
@@ -1332,112 +1419,59 @@ void init_ofiFabricDomain(void) {
       INTERNAL_ERROR_V_NODE0("No (forced) provider for prov_name \"%s\"",
                              (prov_name == NULL) ? "<any>" : prov_name);
     }
-    goto haveProvider;
+    haveProvider = true;
   }
 
   //
-  // If we can find a good provider that supports FI_DELIVERY_COMPLETE,
-  // then use that.  In doing so, don't accept anything that includes
-  // the RxM utility provider unless the environment forces it on us,
-  // because RxM advertises delivery-complete but doesn't actually do
-  // it.
+  // Try to find a good provider, then settle for a not-so-good one. Try
+  // message ordering first, then delivery-complete, but allow those to
+  // be swapped via the environment.
   //
-  hints->tx_attr->op_flags = FI_DELIVERY_COMPLETE;
+  if (!haveProvider) {
+    struct {
+      chpl_bool (*fn)(struct fi_info**, struct fi_info*, chpl_bool);
+      struct fi_info* info;
+    } capTry[2] = { 0 };
+    size_t capTryLen = sizeof(capTry) / sizeof(capTry[0]);
 
-  struct fi_info* infoCmplt;
-  OFI_CHK_2(fi_getinfo(COMM_OFI_FI_VERSION, NULL, NULL, 0, hints, &infoCmplt),
-            ret, -FI_ENODATA);
+    const chpl_bool
+      prefDlvrCmplt = chpl_env_rt_get_bool("COMM_OFI_DO_DELIVERY_COMPLETE",
+                                           true);
+    if (prefDlvrCmplt) {
+      capTry[0].fn = findDlvrCmpltProv;
+      capTry[1].fn = findMsgOrderProv;
+    } else {
+      capTry[0].fn = findMsgOrderProv;
+      capTry[1].fn = findDlvrCmpltProv;
+    }
 
-  if (ret == FI_SUCCESS
-      && ((ofi_info = findProvInList(infoCmplt,
-                                     prov_name == NULL /*skip_ungood_provs*/,
-                                     !forced_RxD /*skip_RxD_provs*/,
-                                     !forced_RxM /*skip_RxM_provs*/))
-          != NULL)) {
-    DBG_PRINTF_NODE0(DBG_PROV,
-                     "** found desirable provider with delivery-complete");
-    fi_freeinfo(infoCmplt);
-    goto haveProvider;
-  }
+    int i;
+    for (i = 0; !haveProvider && i < capTryLen; i++) {
+      haveProvider = (*capTry[i].fn)(&capTry[i].info, hints, true);
+    }
 
-  DBG_PRINTF_NODE0(DBG_PROV,
-                   "** no desirable provider with delivery-complete");
-
-  hints->tx_attr->op_flags = FI_COMPLETION;
-
-  //
-  // If we can find a good provider that supports the transaction
-  // orderings we want, then use that.
-  //
-  uint64_t msg_order_more = FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
-  hints->tx_attr->msg_order |= msg_order_more;
-  hints->rx_attr->msg_order = hints->tx_attr->msg_order;
-
-  struct fi_info* infoTxOrd;
-  OFI_CHK_2(fi_getinfo(COMM_OFI_FI_VERSION, NULL, NULL, 0, hints, &infoTxOrd),
-            ret, -FI_ENODATA);
-
-  if (ret == FI_SUCCESS
-      && ((ofi_info = findProvInList(infoTxOrd,
-                                     prov_name == NULL /*skip_ungood_provs*/,
-                                     !forced_RxD /*skip_RxD_provs*/,
-                                     false /*skip_RxM_provs*/))
-          != NULL)) {
-    DBG_PRINTF_NODE0(DBG_PROV,
-                     "** found desirable provider with transaction orderings");
-    fi_freeinfo(infoTxOrd);
-    goto haveProvider;
-  }
-
-  DBG_PRINTF_NODE0(DBG_PROV,
-                   "** no desirable provider with transaction orderings");
-
-  hints->tx_attr->msg_order &= ~msg_order_more;
-  hints->rx_attr->msg_order = hints->tx_attr->msg_order;
-
-  //
-  // We couldn't find a good provider that supports what we need, so now
-  // try to find _any_ provider that does so.
-  //
-  if (infoCmplt != NULL) {
-    ofi_info = findProvInList(infoCmplt,
-                              false /*skip_ungood_provs*/,
-                              !forced_RxD /*skip_RxD_provs*/,
-                              !forced_RxM /*skip_RxM_provs*/);
-    fi_freeinfo(infoCmplt);
-    if (ofi_info != NULL) {
-      DBG_PRINTF_NODE0(DBG_PROV,
-                       "** found less-desirable provider with "
-                       "delivery-complete");
-      if (infoTxOrd != NULL) {
-        fi_freeinfo(infoTxOrd);
+    if (haveProvider) {
+      ofi_info = capTry[i].info;
+    } else {
+      for (i = 0; !haveProvider && i < capTryLen; i++) {
+        haveProvider = (*capTry[i].fn)(&ofi_info, capTry[i].info, false);
       }
-      goto haveProvider;
+    }
+
+    for (i = 0; i < capTryLen && capTry[i].info != NULL; i++) {
+      fi_freeinfo(capTry[i].info);
     }
   }
 
-  if (infoTxOrd != NULL) {
-    ofi_info = findProvInList(infoTxOrd,
-                              false /*skip_ungood_provs*/,
-                              !forced_RxD /*skip_RxD_provs*/,
-                              false /*skip_RxM_provs*/);
-    fi_freeinfo(infoTxOrd);
-    if (ofi_info != NULL) {
-      DBG_PRINTF_NODE0(DBG_PROV,
-                       "** found less-desirable provider with transaction "
-                       "orderings");
-      goto haveProvider;
-    }
+  if (!haveProvider) {
+    //
+    // We didn't find any provider at all.
+    // NOTE: execution ends here.
+    //
+    INTERNAL_ERROR_V_NODE0("No libfabric provider for prov_name \"%s\"",
+                           (prov_name == NULL) ? "<any>" : prov_name);
   }
 
-  //
-  // We didn't find any provider at all.
-  // NOTE: execution ends here.
-  //
-  INTERNAL_ERROR_V_NODE0("No libfabric provider for prov_name \"%s\"",
-                         (prov_name == NULL) ? "<any>" : prov_name);
-
-haveProvider:
   //
   // If we get here, we have a provider in ofi_info.
   //
@@ -1478,9 +1512,6 @@ haveProvider:
   //
   OFI_CHK(fi_fabric(ofi_info->fabric_attr, &ofi_fabric, NULL));
   OFI_CHK(fi_domain(ofi_fabric, ofi_info, &ofi_domain, NULL));
-
-#  undef DBG_PRINTF_NODE0
-#  undef INTERNAL_ERROR_V_NODE0
 }
 
 
