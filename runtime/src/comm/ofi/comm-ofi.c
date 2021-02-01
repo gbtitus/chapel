@@ -1238,12 +1238,13 @@ struct fi_info* findDlvrCmpltProv(struct fi_info** p_infoList,
   struct fi_info* infoFound;
 
   if (hints != NULL) {
-    uint64_t op_flags_orig = hints->tx_attr->op_flags;
+    uint64_t op_flags_saved = hints->tx_attr->op_flags;
+    hints->tx_attr->op_flags = FI_DELIVERY_COMPLETE;
     infoFound = findProvider(p_infoList, hints,
                              !forced_RxD /*skip_RxD_provs*/,
                              !forced_RxM /*skip_RxM_provs*/,
                              "delivery-complete");
-    hints->tx_attr->op_flags = op_flags_orig;
+    hints->tx_attr->op_flags = op_flags_saved;
   } else {
     infoFound = findProvider(p_infoList, hints,
                              !forced_RxD /*skip_RxD_provs*/,
@@ -1272,21 +1273,21 @@ struct fi_info* findMsgOrderProv(struct fi_info** p_infoList,
   struct fi_info* infoFound;
 
   if (hints != NULL) {
-    uint64_t tx_msg_order_orig = hints->tx_attr->msg_order;
+    uint64_t tx_msg_order_saved = hints->tx_attr->msg_order;
     hints->tx_attr->msg_order |= FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
-    uint64_t rx_msg_order_orig = hints->rx_attr->msg_order;
+    uint64_t rx_msg_order_saved = hints->rx_attr->msg_order;
     hints->rx_attr->msg_order |= FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
     infoFound = findProvider(p_infoList, hints,
                              !forced_RxD /*skip_RxD_provs*/,
                              !isInProvName("ofi_rxm", prov_name) /*skip_RxM_provs*/,
-                             "delivery-complete");
-    hints->tx_attr->msg_order = tx_msg_order_orig;
-    hints->rx_attr->msg_order = rx_msg_order_orig;
+                             "message oprderings");
+    hints->tx_attr->msg_order = tx_msg_order_saved;
+    hints->rx_attr->msg_order = rx_msg_order_saved;
   } else {
     infoFound = findProvider(p_infoList, hints,
                              !forced_RxD /*skip_RxD_provs*/,
                              false /*skip_RxM_provs*/,
-                             "delivery-complete");
+                             "message oprderings");
   }
 
   return infoFound;
