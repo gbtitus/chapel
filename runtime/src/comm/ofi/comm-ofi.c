@@ -1280,14 +1280,14 @@ struct fi_info* findMsgOrderProv(struct fi_info** p_infoList,
     infoFound = findProvider(p_infoList, hints,
                              !forced_RxD /*skip_RxD_provs*/,
                              !isInProvName("ofi_rxm", prov_name) /*skip_RxM_provs*/,
-                             "message oprderings");
+                             "message orderings");
     hints->tx_attr->msg_order = tx_msg_order_saved;
     hints->rx_attr->msg_order = rx_msg_order_saved;
   } else {
     infoFound = findProvider(p_infoList, hints,
                              !forced_RxD /*skip_RxD_provs*/,
                              false /*skip_RxM_provs*/,
-                             "message oprderings");
+                             "message orderings");
   }
 
   return infoFound;
