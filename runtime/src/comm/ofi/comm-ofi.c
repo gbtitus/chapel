@@ -1274,9 +1274,16 @@ struct fi_info* findMsgOrderProv(struct fi_info** p_infoList,
 
   if (hints != NULL) {
     uint64_t tx_msg_order_saved = hints->tx_attr->msg_order;
-    hints->tx_attr->msg_order |= FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
     uint64_t rx_msg_order_saved = hints->rx_attr->msg_order;
-    hints->rx_attr->msg_order |= FI_ORDER_RAW  | FI_ORDER_WAW | FI_ORDER_SAW;
+    uint64_t msg_order = ((hints->caps & FI_ATOMIC) == 0)
+                         ? (FI_ORDER_RMA_WAW
+                            | FI_ORDER_SAS)
+                         : (FI_ORDER_ATOMIC_RAW
+                            | FI_ORDER_ATOMIC_WAR
+                            | FI_ORDER_ATOMIC_WAW
+                            | FI_ORDER_SAS);
+    hints->tx_attr->msg_order = msg_order;
+    hints->rx_attr->msg_order = msg_order;
     infoFound = findProvider(p_infoList, hints,
                              !forced_RxD /*skip_RxD_provs*/,
                              !isInProvName("ofi_rxm", prov_name) /*skip_RxM_provs*/,
